@@ -7,8 +7,16 @@ import { Upload, ArrowRight, Sparkles } from "lucide-react"
 import { HomeNavbar } from "@/components/shared/home-navbar"
 import { HomeFooter } from "@/components/shared/home-footer"
 import { Button } from "@/components/ui/button"
-import { ArtworkConfig } from "@/types"
+import { ArtworkConfig, FrameStyle } from "@/types"
 import { SAMPLE_ARTWORKS } from "@/db/sample-artworks"
+import { FRAME_CATALOG } from "@/db/frames"
+
+const FEATURED_FRAMES: FrameStyle[] = [
+  FRAME_CATALOG.find((f) => f.id === "gold-1-1") ?? FRAME_CATALOG[0],
+  FRAME_CATALOG.find((f) => f.id === "cyan-16-9") ?? FRAME_CATALOG[1],
+  FRAME_CATALOG.find((f) => f.id === "purple-1-1") ?? FRAME_CATALOG[2],
+  FRAME_CATALOG.find((f) => f.id === "gold-16-9") ?? FRAME_CATALOG[3],
+]
 
 export default function HomePage(): React.JSX.Element {
   const router = useRouter()
@@ -77,6 +85,16 @@ export default function HomePage(): React.JSX.Element {
     router.push("/studio")
   }
 
+  // Select signature frame and route to /studio
+  const handleSelectFrame = (selectedFrame: FrameStyle): void => {
+    try {
+      sessionStorage.setItem("framed_frame", JSON.stringify(selectedFrame))
+    } catch (err: unknown) {
+      console.warn("Storage quota or error:", err)
+    }
+    router.push("/studio")
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
       {/* Minimal Navbar */}
@@ -108,9 +126,6 @@ export default function HomePage(): React.JSX.Element {
 
           {/* Top Brand Header */}
           <div className="space-y-2 max-w-xl">
-            <span className="text-[11px] font-mono uppercase tracking-widest text-primary font-semibold bg-primary/10 px-3 py-1 rounded-full inline-block">
-              Custom Fine Art Picture Framing Studio
-            </span>
             <h1 className="font-heading text-4xl sm:text-6xl text-foreground font-medium tracking-tight">
               ART FRAME
             </h1>
@@ -120,36 +135,78 @@ export default function HomePage(): React.JSX.Element {
           </div>
 
           {/* Primary Action Target within the File Border */}
-          <div className="mt-8 space-y-4 w-full max-w-md">
+          <div className="mt-8 space-y-4 w-full max-w-xl">
             <Button
               size="lg"
               onClick={() => defaultFileInputRef.current?.click()}
-              className="w-full py-6 text-sm font-semibold gap-2 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl"
+              className="w-full py-6 text-sm font-semibold gap-2 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl cursor-pointer"
             >
               <Upload className="w-4 h-4" />
               Upload Your Picture (or Drag &amp; Drop Here)
             </Button>
 
-            {/* Quick Sample Artworks Trigger */}
+            {/* Quick Start Triggers: Sample Artworks OR Signature Frames */}
             <div className="space-y-2 pt-2">
-              <p className="text-xs text-muted-foreground">Or start immediately with sample artwork:</p>
-              <div className="grid grid-cols-4 gap-2">
-                {SAMPLE_ARTWORKS.map((sample) => (
-                  <button
-                    key={sample.id}
-                    type="button"
-                    onClick={() => handleSelectSample(sample)}
-                    className="group relative aspect-square rounded-lg border border-border overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-                    title={sample.title}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={sample.src}
-                      alt={sample.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                    />
-                  </button>
-                ))}
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                <span>Or start immediately with sample artwork or frame:</span>
+                <span className="text-[10px] font-mono text-muted-foreground/80">Click any art or frame</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-card/90 border border-border/80 shadow-xs">
+                {/* 1. Sample Artworks */}
+                <div className="space-y-1.5 text-left">
+                  <span className="text-[11px] font-semibold text-foreground/80 block">
+                    Sample Artwork:
+                  </span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {SAMPLE_ARTWORKS.map((sample) => (
+                      <button
+                        key={sample.id}
+                        type="button"
+                        onClick={() => handleSelectSample(sample)}
+                        className="group relative aspect-square rounded-lg border border-border overflow-hidden hover:ring-2 hover:ring-primary transition-all bg-muted/30 cursor-pointer shadow-2xs"
+                        title={sample.title}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={sample.src}
+                          alt={sample.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Signature Frames */}
+                <div className="space-y-1.5 text-left border-t sm:border-t-0 sm:border-l border-border/80 pt-2.5 sm:pt-0 sm:pl-3">
+                  <span className="text-[11px] font-semibold text-foreground/80 block">
+                    Signature Frame:
+                  </span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {FEATURED_FRAMES.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => handleSelectFrame(f)}
+                        className="group relative aspect-square rounded-lg border border-border overflow-hidden hover:ring-2 hover:ring-primary transition-all bg-muted/30 p-1 flex items-center justify-center cursor-pointer shadow-2xs"
+                        title={`${f.name} (${f.ratio})`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={f.imageUrl}
+                          alt={f.name}
+                          className={`w-full h-full object-contain filter drop-shadow-2xs group-hover:scale-110 transition-transform ${
+                            f.rotation === 90 ? "rotate-90 scale-85" : ""
+                          }`}
+                        />
+                        <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono px-0.5 rounded bg-background/80 text-muted-foreground scale-90">
+                          {f.ratio}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 

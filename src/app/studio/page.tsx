@@ -76,7 +76,7 @@ export default function StudioEditorPage(): React.JSX.Element {
 
   const visualizerRef = React.useRef<HTMLDivElement>(null)
 
-  // Load custom artwork from session storage if uploaded on homepage
+  // Load custom artwork or selected frame from session storage if selected on homepage
   React.useEffect(() => {
     try {
       const stored = sessionStorage.getItem("framed_artwork")
@@ -86,8 +86,17 @@ export default function StudioEditorPage(): React.JSX.Element {
           setArtwork(parsed)
         }
       }
+      const storedFrame = sessionStorage.getItem("framed_frame")
+      if (storedFrame) {
+        const parsedFrame = JSON.parse(storedFrame) as FrameStyle
+        if (parsedFrame && parsedFrame.id) {
+          const match = FRAME_CATALOG.find((f) => f.id === parsedFrame.id) ?? parsedFrame
+          setFrame(match)
+          setMouldingWidthInches(match.defaultWidth ?? 1.25)
+        }
+      }
     } catch (err: unknown) {
-      console.warn("Failed to retrieve stored artwork:", err)
+      console.warn("Failed to retrieve stored studio assets:", err)
     }
   }, [])
 
