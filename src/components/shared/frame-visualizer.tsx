@@ -35,6 +35,9 @@ interface FrameVisualizerProps {
   onToggleGlassGlare: () => void
   onToggleScaleReference: () => void
   onZoomChange: (zoom: number) => void
+  framePosition?: { x: number; y: number }
+  onFramePositionChange?: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>
+  onCanvasDimensionsChange?: (dims: { width: number; height: number }) => void
   visualizerRef?: React.RefObject<HTMLDivElement | null>
 }
 
@@ -49,10 +52,16 @@ export function FrameVisualizer({
   showGlassGlare,
   zoomLevel,
   onZoomChange,
+  framePosition,
+  onFramePositionChange,
+  onCanvasDimensionsChange,
   visualizerRef,
 }: FrameVisualizerProps): React.JSX.Element {
   const containerRef = React.useRef<HTMLDivElement>(null)
-  const [framePosition, setFramePosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [internalPosition, setInternalPosition] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const position = framePosition ?? internalPosition
+  const setPosition = onFramePositionChange ?? setInternalPosition
+
   const [canvasDimensions, setCanvasDimensions] = React.useState<{ width: number; height: number }>({
     width: 800,
     height: 450,
@@ -70,22 +79,22 @@ export function FrameVisualizer({
 
       if (e.key === "ArrowLeft") {
         e.preventDefault()
-        setFramePosition((prev) => ({ ...prev, x: prev.x - PAN_STEP }))
+        setPosition((prev) => ({ ...prev, x: prev.x - PAN_STEP }))
       } else if (e.key === "ArrowRight") {
         e.preventDefault()
-        setFramePosition((prev) => ({ ...prev, x: prev.x + PAN_STEP }))
+        setPosition((prev) => ({ ...prev, x: prev.x + PAN_STEP }))
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
-        setFramePosition((prev) => ({ ...prev, y: prev.y - PAN_STEP }))
+        setPosition((prev) => ({ ...prev, y: prev.y - PAN_STEP }))
       } else if (e.key === "ArrowDown") {
         e.preventDefault()
-        setFramePosition((prev) => ({ ...prev, y: prev.y + PAN_STEP }))
+        setPosition((prev) => ({ ...prev, y: prev.y + PAN_STEP }))
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+  }, [setPosition])
 
   // Measure actual rendered canvas container to scale frame proportionally
   React.useEffect(() => {
@@ -96,6 +105,7 @@ export function FrameVisualizer({
       const rect = el.getBoundingClientRect()
       if (rect.width > 0 && rect.height > 0) {
         setCanvasDimensions({ width: rect.width, height: rect.height })
+        onCanvasDimensionsChange?.({ width: rect.width, height: rect.height })
       }
     }
 
@@ -106,13 +116,14 @@ export function FrameVisualizer({
         const { width, height } = entry.contentRect
         if (width > 0 && height > 0) {
           setCanvasDimensions({ width, height })
+          onCanvasDimensionsChange?.({ width, height })
         }
       }
     })
 
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [onCanvasDimensionsChange])
 
   // Frame sizing and aspect ratio based on selected frame PNG
   const frameRatio = frame.aspectRatio || 1
@@ -173,17 +184,18 @@ export function FrameVisualizer({
           style={{
             width: `${Math.round(frameDisplayW)}px`,
             height: `${Math.round(frameDisplayH)}px`,
-            transform: `translate(${framePosition.x}px, ${framePosition.y}px) scale(${zoomLevel})`,
+            transform: `translate(${position.x}px, ${position.y}px) scale(${zoomLevel})`,
           }}
         >
-          {/* Inner Artwork Window (positioned precisely inside the frame's transparent center window) */}
+          {/* Inner Artwork Window (positioned precisely dead-center inside the frame moulding) */}
           <div
             className="absolute overflow-hidden flex items-center justify-center z-10"
             style={{
-              top: `${insets.top}%`,
-              right: `${insets.right}%`,
-              bottom: `${insets.bottom}%`,
-              left: `${insets.left}%`,
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: `${Math.max(10, 100 - (insets.left + insets.right))}%`,
+              height: `${Math.max(10, 100 - (insets.top + insets.bottom))}%`,
             }}
           >
             {/* Matboard layer if enabled */}
@@ -228,7 +240,27 @@ export function FrameVisualizer({
             <img
               src={frame.imageUrl}
               alt={frame.name}
-              className="absolute inset-0 w-full h-full object-fill pointer-events-none z-20 select-none filter drop-shadow-[0_22px_32px_rgba(0,0,0,0.65)]"
+              className="pointer-events-none z-20 select-none filter drop-shadow-[0_22px_32px_rgba(0,0,0,0.65)]"
+              style={
+                frame.rotation === 90
+                  ? {
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      width: `${Math.round(frameDisplayH)}px`,
+                      height: `${Math.round(frameDisplayW)}px`,
+                      transform: "translate(-50%, -50%) rotate(90deg)",
+                      transformOrigin: "center center",
+                      objectFit: "fill",
+                    }
+                  : {
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "fill",
+                    }
+              }
             />
           ) : (
             <div
@@ -244,26 +276,26 @@ export function FrameVisualizer({
 
       {/* Floating Canvas Quick Controls (Bottom Center) with Size (+ / -) & Position Arrow Keys */}
       <div className="relative flex items-center gap-1.5 bg-card/90 backdrop-blur-md border border-border/80 rounded-full px-3 py-1.5 shadow-xl">
-        {/* Size / Zoom Controls (- / +) */}
+        {/* Size / Zoom Controls (- / +) from 5% (0.05) to 200% (2.0) */}
         <div className="flex items-center gap-1">
           <Button
             className="h-6 w-6"
             variant="secondary"
             size="icon-xs"
-            onClick={() => onZoomChange(Math.max(0.7, zoomLevel - 0.1))}
+            onClick={() => onZoomChange(Math.max(0.05, Math.round((zoomLevel - 0.05) * 100) / 100))}
             title="Size Down / Zoom Out (-)"
             aria-label="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </Button>
-          <span className="text-[11px] font-mono font-medium px-1 text-muted-foreground min-w-[34px] text-center">
+          <span className="text-[11px] font-mono font-medium px-1 text-muted-foreground min-w-[38px] text-center">
             {Math.round(zoomLevel * 100)}%
           </span>
           <Button
             className="h-6 w-6"
             variant="secondary"
             size="icon-xs"
-            onClick={() => onZoomChange(Math.min(1.4, zoomLevel + 0.1))}
+            onClick={() => onZoomChange(Math.min(2.0, Math.round((zoomLevel + 0.05) * 100) / 100))}
             title="Size Up / Zoom In (+)"
             aria-label="Zoom In"
           >
@@ -280,7 +312,7 @@ export function FrameVisualizer({
             className="h-6 w-6"
             variant="ghost"
             size="icon-xs"
-            onClick={() => setFramePosition((prev) => ({ ...prev, x: prev.x - PAN_STEP }))}
+            onClick={() => setPosition((prev) => ({ ...prev, x: prev.x - PAN_STEP }))}
             title="Move Frame Left (←)"
             aria-label="Move Left"
           >
@@ -290,7 +322,7 @@ export function FrameVisualizer({
             className="h-6 w-6"
             variant="ghost"
             size="icon-xs"
-            onClick={() => setFramePosition((prev) => ({ ...prev, y: prev.y - PAN_STEP }))}
+            onClick={() => setPosition((prev) => ({ ...prev, y: prev.y - PAN_STEP }))}
             title="Move Frame Up (↑)"
             aria-label="Move Up"
           >
@@ -300,7 +332,7 @@ export function FrameVisualizer({
             className="h-6 w-6"
             variant="ghost"
             size="icon-xs"
-            onClick={() => setFramePosition((prev) => ({ ...prev, y: prev.y + PAN_STEP }))}
+            onClick={() => setPosition((prev) => ({ ...prev, y: prev.y + PAN_STEP }))}
             title="Move Frame Down (↓)"
             aria-label="Move Down"
           >
@@ -310,7 +342,7 @@ export function FrameVisualizer({
             className="h-6 w-6"
             variant="ghost"
             size="icon-xs"
-            onClick={() => setFramePosition((prev) => ({ ...prev, x: prev.x + PAN_STEP }))}
+            onClick={() => setPosition((prev) => ({ ...prev, x: prev.x + PAN_STEP }))}
             title="Move Frame Right (→)"
             aria-label="Move Right"
           >
@@ -318,12 +350,12 @@ export function FrameVisualizer({
           </Button>
 
           {/* Reset Position Dot Button (when shifted) */}
-          {(framePosition.x !== 0 || framePosition.y !== 0) && (
+          {(position.x !== 0 || position.y !== 0) && (
             <Button
               className="h-6 w-6 text-muted-foreground hover:text-foreground ml-0.5"
               variant="ghost"
               size="icon-xs"
-              onClick={() => setFramePosition({ x: 0, y: 0 })}
+              onClick={() => setPosition({ x: 0, y: 0 })}
               title="Reset Frame Position to Center"
               aria-label="Reset Position"
             >

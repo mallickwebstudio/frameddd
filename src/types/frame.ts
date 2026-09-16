@@ -1,6 +1,6 @@
 export type FrameMaterial = "wood" | "metal" | "classic" | "modern"
 
-export type FrameRatio = "1:1" | "16:9" | "3:4"
+export type FrameRatio = "1:1" | "16:9" | "9:16" | "3:4" | "4:3"
 
 export interface FrameInset {
   top: number
@@ -21,6 +21,7 @@ export interface FrameStyle {
   ratio: FrameRatio
   aspectRatio: number // width / height numerical
   innerInset: FrameInset // percentage insets for inner transparent opening
+  rotation?: number // 0 or 90
   mouldingWidthRange?: [number, number] // min and max inches
   defaultWidth?: number // inches
   description: string

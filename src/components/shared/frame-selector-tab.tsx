@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Check } from "lucide-react"
+import { Check, Sparkles } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { FrameStyle } from "@/types"
 import { FRAME_CATALOG } from "@/db/frames"
 import { ScrollFadeContainer } from "@/components/shared/scroll-fade-container"
@@ -9,6 +10,7 @@ import { ScrollFadeContainer } from "@/components/shared/scroll-fade-container"
 interface FrameSelectorTabProps {
   selectedFrame: FrameStyle
   onSelectFrame: (frame: FrameStyle) => void
+  artworkAspectRatio?: number
   mouldingWidthInches?: number
   onMouldingWidthChange?: (width: number) => void
 }
@@ -16,21 +18,68 @@ interface FrameSelectorTabProps {
 export function FrameSelectorTab({
   selectedFrame,
   onSelectFrame,
+  artworkAspectRatio,
 }: FrameSelectorTabProps): React.JSX.Element {
+  const [suggestOnly, setSuggestOnly] = React.useState<boolean>(false)
+
+  // Suggest frames matching or closest to artwork's aspect ratio
+  const displayedFrames = React.useMemo(() => {
+    if (!suggestOnly) return FRAME_CATALOG
+
+    const targetRatio = artworkAspectRatio ?? 1
+    // Matches within ±0.35 aspect ratio tolerance
+    const matches = FRAME_CATALOG.filter(
+      (f) => Math.abs(f.aspectRatio - targetRatio) <= 0.35
+    )
+
+    if (matches.length > 0) {
+      return matches
+    }
+
+    // Fallback to 3 closest frames by ratio distance
+    return [...FRAME_CATALOG]
+      .sort(
+        (a, b) =>
+          Math.abs(a.aspectRatio - targetRatio) - Math.abs(b.aspectRatio - targetRatio)
+      )
+      .slice(0, 3)
+  }, [suggestOnly, artworkAspectRatio])
+
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* Frame Selection Header */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-semibold text-foreground tracking-wide uppercase">
-            Frame Collection
-          </label>
-          <span className="text-[10px] text-muted-foreground">Scroll to view frames</span>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-foreground tracking-wide uppercase">
+              Frame Collection
+            </label>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              ({displayedFrames.length} {displayedFrames.length === 1 ? "frame" : "frames"})
+            </span>
+          </div>
+
+          {/* Suggest Frame / Show All Button */}
+          <Button
+            type="button"
+            variant={suggestOnly ? "default" : "outline"}
+            size="xs"
+            onClick={() => setSuggestOnly((prev) => !prev)}
+            className="text-[11px] h-6 px-2.5 gap-1.5 cursor-pointer shadow-xs"
+            title={
+              suggestOnly
+                ? "Show all available frames in the collection"
+                : "Suggest frames matching your artwork's aspect ratio"
+            }
+          >
+            <Sparkles className="w-3 h-3" />
+            {suggestOnly ? "Show All" : "Suggest Frame"}
+          </Button>
         </div>
 
         {/* Horizontal Scroll for Frame Cards with Natural Blend Fade */}
         <ScrollFadeContainer>
-          {FRAME_CATALOG.map((frame) => {
+          {displayedFrames.map((frame) => {
             const isSelected = selectedFrame.id === frame.id
             return (
               <div
@@ -48,7 +97,9 @@ export function FrameSelectorTab({
                   <img
                     src={frame.imageUrl}
                     alt={frame.name}
-                    className="w-full h-full object-contain filter drop-shadow-sm group-hover:scale-105 transition-transform duration-200"
+                    className={`w-full h-full object-contain filter drop-shadow-sm group-hover:scale-105 transition-transform duration-200 ${
+                      frame.rotation === 90 ? "rotate-90 scale-85" : ""
+                    }`}
                   />
                   {isSelected && (
                     <div className="absolute top-1 right-1 bg-primary text-primary-foreground p-0.5 rounded-full shadow-sm">
