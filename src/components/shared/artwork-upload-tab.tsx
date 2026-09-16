@@ -5,19 +5,19 @@ import { Upload, RotateCw, Image as ImageIcon, Sparkles, Check } from "lucide-re
 import { Button } from "@/components/ui/button"
 import { ArtworkConfig } from "@/types"
 import { SAMPLE_ARTWORKS } from "@/db/sample-artworks"
+import { ScrollFadeContainer } from "@/components/shared/scroll-fade-container"
 
 interface ArtworkUploadTabProps {
   artwork: ArtworkConfig
   onSelectArtwork: (artwork: ArtworkConfig) => void
   onRotateArtwork: () => void
-  onDimensionsChange: (width: number, height: number) => void
+  onDimensionsChange?: (width: number, height: number) => void
 }
 
 export function ArtworkUploadTab({
   artwork,
   onSelectArtwork,
   onRotateArtwork,
-  onDimensionsChange,
 }: ArtworkUploadTabProps): React.JSX.Element {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = React.useState<boolean>(false)
@@ -78,7 +78,7 @@ export function ArtworkUploadTab({
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-5 animate-in fade-in duration-200">
       {/* Upload Zone */}
       <div className="space-y-2">
         <label className="text-xs font-semibold text-foreground tracking-wide uppercase">
@@ -120,61 +120,33 @@ export function ArtworkUploadTab({
         </div>
       </div>
 
-      {/* Active Artwork Controls */}
-      <div className="p-4 rounded-xl border border-border bg-muted/30 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <ImageIcon className="w-4 h-4 text-primary shrink-0" />
-            <span className="text-xs font-semibold truncate text-foreground">
+      {/* Active Artwork Indicator & Controls */}
+      <div className="p-3.5 rounded-xl border border-border bg-muted/30 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 overflow-hidden">
+          <ImageIcon className="w-4 h-4 text-primary shrink-0" />
+          <div className="overflow-hidden">
+            <span className="text-xs font-semibold truncate block text-foreground">
               {artwork.title}
             </span>
-          </div>
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={onRotateArtwork}
-            className="text-xs gap-1 h-7"
-            title="Rotate 90 degrees"
-          >
-            <RotateCw className="w-3 h-3" />
-            Rotate 90°
-          </Button>
-        </div>
-
-        {/* Artwork Print Dimensions */}
-        <div className="space-y-1.5 pt-2 border-t border-border/60">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Artwork Print Size:</span>
-            <span className="font-semibold text-foreground font-mono">
+            <span className="text-[10px] text-muted-foreground font-mono">
               {artwork.originalWidthInches}&quot; &times; {artwork.originalHeightInches}&quot;
             </span>
           </div>
-          <div className="grid grid-cols-4 gap-1.5 pt-1">
-            {[
-              { label: '8" × 10"', w: 8, h: 10 },
-              { label: '12" × 16"', w: 12, h: 16 },
-              { label: '18" × 24"', w: 18, h: 24 },
-              { label: '24" × 36"', w: 24, h: 36 },
-            ].map((size) => (
-              <button
-                key={size.label}
-                type="button"
-                onClick={() => onDimensionsChange(size.w, size.h)}
-                className={`py-1.5 px-2 text-[11px] font-mono rounded-md border transition-all ${
-                  artwork.originalWidthInches === size.w && artwork.originalHeightInches === size.h
-                    ? "border-primary bg-primary text-primary-foreground font-semibold shadow-xs"
-                    : "border-border bg-card text-foreground hover:bg-muted"
-                }`}
-              >
-                {size.label}
-              </button>
-            ))}
-          </div>
         </div>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={onRotateArtwork}
+          className="text-xs gap-1.5 h-7 shrink-0"
+          title="Rotate 90 degrees"
+        >
+          <RotateCw className="w-3 h-3" />
+          Rotate 90°
+        </Button>
       </div>
 
-      {/* Sample Library */}
-      <div className="space-y-2.5">
+      {/* Sample Library - Horizontal Scrollable with Natural Blend Fade */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
@@ -182,17 +154,17 @@ export function ArtworkUploadTab({
               Or Try Sample Artworks
             </span>
           </div>
-          <span className="text-[10px] text-muted-foreground">Instant 1-Click Preview</span>
+          <span className="text-[10px] text-muted-foreground">Scroll to view</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+        <ScrollFadeContainer>
           {SAMPLE_ARTWORKS.map((sample) => {
             const isSelected = artwork.id === sample.id
             return (
               <div
                 key={sample.id}
                 onClick={() => onSelectArtwork(sample)}
-                className={`group relative rounded-xl border overflow-hidden cursor-pointer transition-all ${
+                className={`group relative w-36 shrink-0 rounded-xl border overflow-hidden cursor-pointer transition-all ${
                   isSelected
                     ? "border-primary ring-2 ring-primary/20 shadow-md"
                     : "border-border hover:border-primary/50 hover:shadow-xs"
@@ -220,7 +192,7 @@ export function ArtworkUploadTab({
               </div>
             )
           })}
-        </div>
+        </ScrollFadeContainer>
       </div>
     </div>
   )

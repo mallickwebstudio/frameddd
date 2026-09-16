@@ -34,7 +34,7 @@ export function calculateFabricationQuote(
   const framePerimeterFeet = (2 * (totalWidth + totalHeight)) / 12
 
   // Costs
-  const frameCost = Math.round(framePerimeterFeet * frame.pricePerFoot)
+  const frameCost = frame.price ?? 240
 
   // Area in square feet for mat & glass
   const areaSquareFeet = (insideFrameWidth * insideFrameHeight) / 144

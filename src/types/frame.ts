@@ -1,19 +1,33 @@
 export type FrameMaterial = "wood" | "metal" | "classic" | "modern"
 
+export type FrameRatio = "1:1" | "16:9" | "3:4"
+
+export interface FrameInset {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
 export interface FrameStyle {
   id: string
   name: string
   material: FrameMaterial
   finish: string
   color: string
-  mouldingWidthRange: [number, number] // min and max inches
-  defaultWidth: number // inches
-  pricePerFoot: number // USD
+  price: number // ₹240
+  pricePerFoot: number
+  imageUrl: string
+  ratio: FrameRatio
+  aspectRatio: number // width / height numerical
+  innerInset: FrameInset // percentage insets for inner transparent opening
+  mouldingWidthRange?: [number, number] // min and max inches
+  defaultWidth?: number // inches
   description: string
   badge?: string
   // Visual rendering properties
-  borderCss: string
-  boxShadowCss: string
+  borderCss?: string
+  boxShadowCss?: string
   innerLipCss?: string
   textureGradient?: string
   accentHighlight?: string

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Atelier Frame & Co. | Custom Framing & On-Wall Visualizer",
+  title: "ART FRAME | Custom Framing & On-Wall Visualizer",
   description: "Custom fine art picture framing studio and photorealistic on-wall visualizer with real-time moulding styles, matting, and wall ambiance customization.",
 };
 

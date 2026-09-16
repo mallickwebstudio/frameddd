@@ -7,13 +7,12 @@ import {
   Upload,
   Camera,
   Check,
-  SunMedium,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Slider } from "@/components/ui/slider"
 import { WallBackground } from "@/types"
 import { WALL_COLOR_SWATCHES, WALL_PRESETS } from "@/db/presets"
 import { LiveCameraModal } from "@/components/shared/live-camera-modal"
+import { ScrollFadeContainer } from "@/components/shared/scroll-fade-container"
 
 interface WallBackgroundTabProps {
   wall: WallBackground
@@ -68,13 +67,6 @@ export function WallBackgroundTab({
     })
   }
 
-  const handleBrightnessChange = (brightness: number): void => {
-    onWallChange({
-      ...wall,
-      brightness,
-    })
-  }
-
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* 1. Stacked Section: Wall Paint */}
@@ -100,8 +92,8 @@ export function WallBackgroundTab({
           </div>
         </div>
 
-        {/* Horizontal Scroll for Wall Paint Swatches */}
-        <div className="flex items-center gap-2.5 overflow-x-auto pb-2 pt-1 no-scrollbar">
+        {/* Horizontal Scroll for Wall Paint Swatches with Natural Blend Fade */}
+        <ScrollFadeContainer contentClassName="items-center">
           {WALL_COLOR_SWATCHES.map((swatch) => {
             const isSelected =
               wall.type === "color" &&
@@ -147,7 +139,7 @@ export function WallBackgroundTab({
               </button>
             )
           })}
-        </div>
+        </ScrollFadeContainer>
       </div>
 
       {/* 2. Stacked Section: Room Preset */}
@@ -162,8 +154,8 @@ export function WallBackgroundTab({
           <span className="text-[10px] text-muted-foreground">Scroll to view rooms</span>
         </div>
 
-        {/* Horizontal Scroll for Room Preset Cards */}
-        <div className="flex gap-3 overflow-x-auto pb-2 pt-1 no-scrollbar">
+        {/* Horizontal Scroll for Room Preset Cards with Natural Blend Fade */}
+        <ScrollFadeContainer>
           {WALL_PRESETS.map((preset) => {
             const isSelected = wall.type === "preset" && wall.value === preset.value
             return (
@@ -196,7 +188,7 @@ export function WallBackgroundTab({
               </div>
             )
           })}
-        </div>
+        </ScrollFadeContainer>
       </div>
 
       {/* 3. Stacked Section: Your Wall */}
@@ -274,38 +266,7 @@ export function WallBackgroundTab({
         )}
       </div>
 
-      {/* 4. Stacked Section: Room Ambiance & Lighting */}
-      <div className="p-4 rounded-xl border border-border bg-muted/30 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <SunMedium className="w-4 h-4 text-primary" />
-            <span className="text-xs font-semibold text-foreground">
-              Room Ambiance &amp; Lighting
-            </span>
-          </div>
-          <span className="text-xs font-mono font-bold text-foreground bg-card border border-border px-2 py-0.5 rounded">
-            {Math.round((wall.brightness ?? 1.0) * 100)}%
-          </span>
-        </div>
 
-        <Slider
-          value={[wall.brightness ?? 1.0]}
-          min={0.6}
-          max={1.3}
-          onValueChange={(val) => {
-            const nextVal = Array.isArray(val) ? val[0] : val
-            if (typeof nextVal === "number") {
-              handleBrightnessChange(nextVal)
-            }
-          }}
-        />
-
-        <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
-          <span>Moody Warmth</span>
-          <span>Standard Daylight</span>
-          <span>Bright Exhibition</span>
-        </div>
-      </div>
 
       {/* Camera Capture Modal */}
       <LiveCameraModal
