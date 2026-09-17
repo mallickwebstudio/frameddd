@@ -60,7 +60,7 @@ export interface ArtworkConfig {
   rotation: number // 0, 90, 180, 270
 }
 
-export type WallBackgroundType = "color" | "preset" | "upload" | "camera"
+export type WallBackgroundType = "color" | "preset" | "upload"
 
 export interface WallBackground {
   type: WallBackgroundType
@@ -107,6 +107,8 @@ export interface FabricationQuote {
   subtotal: number
   tax: number
   total: number
+  quantity: number
+  unitPrice: number
 }
 
 export interface StudioState {

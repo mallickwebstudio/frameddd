@@ -14,7 +14,8 @@ export function calculateFabricationQuote(
   mouldingWidthInches: number,
   mat: MatConfig,
   glazingId: GlazingType,
-  hardwareId: HangingHardware
+  hardwareId: HangingHardware,
+  quantity: number = 1
 ): FabricationQuote {
   // Dimensions
   const artWidth = artwork.originalWidthInches
@@ -33,30 +34,20 @@ export function calculateFabricationQuote(
   // Perimeter in feet
   const framePerimeterFeet = (2 * (totalWidth + totalHeight)) / 12
 
-  // Costs
-  const frameCost = frame.price ?? 240
+  // Transparent Pricing: matches the visible fixed price on website (₹240 per frame)
+  const safeQuantity = Math.max(1, Math.floor(quantity || 1))
+  const unitPrice = frame.price ?? 240
+  const frameCost = unitPrice * safeQuantity
 
-  // Area in square feet for mat & glass
-  const areaSquareFeet = (insideFrameWidth * insideFrameHeight) / 144
+  // Mat, glazing, assembly, and hardware are all included in the ₹240 fixed artisan package
+  const matCost = 0
+  const glazingCost = 0
+  const hardwareCost = 0
+  const laborAndAssemblyCost = 0
 
-  let matCost = 0
-  if (mat.enabled) {
-    const baseMatRate = 250 // ₹ per sq ft
-    matCost = Math.round(areaSquareFeet * baseMatRate * (mat.isDoubleMat ? 1.6 : 1.0))
-  }
-
-  const selectedGlazing = GLAZING_OPTIONS.find((g) => g.id === glazingId) ?? GLAZING_OPTIONS[0]
-  const baseGlazingRate = 350 // ₹ per sq ft
-  const glazingCost = Math.round(areaSquareFeet * baseGlazingRate * selectedGlazing.priceMultiplier)
-
-  const selectedHardware = HARDWARE_OPTIONS.find((h) => h.id === hardwareId) ?? HARDWARE_OPTIONS[0]
-  const hardwareCost = selectedHardware.price * 50
-
-  const laborAndAssemblyCost = 650 // Professional conservation assembly & dust cover backing
-
-  const subtotal = frameCost + matCost + glazingCost + hardwareCost + laborAndAssemblyCost
-  const tax = Math.round(subtotal * 0.12)
-  const total = subtotal + tax
+  const subtotal = frameCost
+  const tax = 0 // Inclusive of taxes
+  const total = subtotal
 
   return {
     artWidthInches: artWidth,
@@ -73,5 +64,7 @@ export function calculateFabricationQuote(
     subtotal,
     tax,
     total,
+    quantity: safeQuantity,
+    unitPrice,
   }
 }

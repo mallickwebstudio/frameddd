@@ -11,7 +11,11 @@ import {
   MessageCircle,
   CheckCircle2,
   Send,
+  Plus,
+  Minus,
+  Loader2,
 } from "lucide-react"
+import { toast } from "sonner"
 import { StudioHeader } from "@/components/shared/studio-header"
 import { FrameVisualizer } from "@/components/shared/frame-visualizer"
 import { ArtworkUploadTab } from "@/components/shared/artwork-upload-tab"
@@ -29,6 +33,8 @@ import {
   HangingHardware,
   MatConfig,
   WallBackground,
+  QuoteRequestBody,
+  QuoteApiResponse,
 } from "@/types"
 import { FRAME_CATALOG } from "@/db/frames"
 import { MAT_COLORS, WALL_PRESETS } from "@/db/presets"
@@ -57,6 +63,9 @@ export default function StudioEditorPage(): React.JSX.Element {
   const [glazing, setGlazing] = React.useState<GlazingType>("standard-acrylic")
   const [hardware, setHardware] = React.useState<HangingHardware>("wire-hanger")
 
+  // Order Quantity State (supports 1, 2, 5, 10, etc.)
+  const [quantity, setQuantity] = React.useState<number>(1)
+
   // Visualizer Display Toggles & Canvas Geometry
   const [showGlassGlare, setShowGlassGlare] = React.useState<boolean>(true)
   const [showScaleReference, setShowScaleReference] = React.useState<boolean>(false)
@@ -73,6 +82,8 @@ export default function StudioEditorPage(): React.JSX.Element {
   const [customerPhone, setCustomerPhone] = React.useState<string>("")
   const [customerMessage, setCustomerMessage] = React.useState<string>("")
   const [isQuoteSubmitted, setIsQuoteSubmitted] = React.useState<boolean>(false)
+  const [isSubmittingQuote, setIsSubmittingQuote] = React.useState<boolean>(false)
+  const [quoteRefId, setQuoteRefId] = React.useState<string>("")
 
   const visualizerRef = React.useRef<HTMLDivElement>(null)
 
@@ -100,7 +111,7 @@ export default function StudioEditorPage(): React.JSX.Element {
     }
   }, [])
 
-  // Fabrication Quote calculation
+  // Fabrication Quote calculation with quantity
   const quote = React.useMemo(() => {
     return calculateFabricationQuote(
       artwork,
@@ -108,9 +119,10 @@ export default function StudioEditorPage(): React.JSX.Element {
       mouldingWidthInches,
       mat,
       glazing,
-      hardware
+      hardware,
+      quantity
     )
-  }, [artwork, frame, mouldingWidthInches, mat, glazing, hardware])
+  }, [artwork, frame, mouldingWidthInches, mat, glazing, hardware, quantity])
 
   // Frame selection handler
   const handleSelectFrame = (newFrame: FrameStyle): void => {
@@ -300,7 +312,7 @@ export default function StudioEditorPage(): React.JSX.Element {
       ctx.font = "14px sans-serif"
       ctx.fillStyle = "rgba(255, 255, 255, 0.75)"
       ctx.fillText(
-        `${frame.name} (${frame.ratio}) • ${quote.artWidthInches}" × ${quote.artHeightInches}" Art • Total: ₹${quote.total}`,
+        `${frame.name} (${frame.ratio}) • ${quote.artWidthInches}" × ${quote.artHeightInches}" Art • Total (${quote.quantity}x): ₹${quote.total}`,
         50,
         canvas.height - 20
       )
@@ -329,12 +341,13 @@ export default function StudioEditorPage(): React.JSX.Element {
       `*Phone:* ${customerPhone.trim() || "Not provided"}`,
       "",
       `*Frame Style:* ${frame.name} (${frame.ratio})`,
-      `*Moulding Price:* ₹${frame.price}`,
+      `*Unit Price:* ₹${quote.unitPrice}`,
+      `*Order Quantity:* ${quote.quantity} piece${quote.quantity > 1 ? "s" : ""}`,
       `*Artwork Size:* ${quote.artWidthInches}" × ${quote.artHeightInches}"`,
       `*Finished Size:* ${quote.totalWidthInches}" × ${quote.totalHeightInches}"`,
       `*Matboard:* ${mat.enabled ? `${mat.color.name} (${mat.widthInches}")` : "None"}`,
       `*Glazing:* ${glazing}`,
-      `*Estimated Total:* ₹${quote.total}`,
+      `*Total to Pay:* ₹${quote.total} (₹${quote.unitPrice} × ${quote.quantity})`,
     ]
 
     if (customerMessage.trim()) {
@@ -345,6 +358,66 @@ export default function StudioEditorPage(): React.JSX.Element {
 
     const encoded = encodeURIComponent(lines.join("\n"))
     window.open(`https://wa.me/?text=${encoded}`, "_blank")
+  }
+
+  // Submit Quote Inquiry to Google Form via Next.js API Route
+  const handleSubmitQuote = async (): Promise<void> => {
+    const name = customerName.trim()
+    const phone = customerPhone.trim()
+
+    if (!name) {
+      toast.error("Please enter your name")
+      return
+    }
+
+    if (!phone || phone.replace(/\D/g, "").length < 7) {
+      toast.error("Please enter a valid phone number")
+      return
+    }
+
+    setIsSubmittingQuote(true)
+    try {
+      const orientationLabel =
+        frame.aspectRatio === 1
+          ? "Square (1:1)"
+          : (frame.aspectRatio || 1) > 1
+          ? `Landscape (${frame.ratio})`
+          : `Portrait (${frame.ratio})`
+
+      const payload: QuoteRequestBody = {
+        name,
+        phone,
+        msg: customerMessage.trim() || undefined,
+        selectedFrameName: frame.name,
+        frameAspectRatio: `${frame.ratio} • ${orientationLabel}`,
+        orderQuantity: `${quantity} ${quantity === 1 ? "frame" : "frames"}`,
+        artWorkSize: `${quote.artWidthInches}" × ${quote.artHeightInches}"`,
+        estimatedTotalPrice: `₹${quote.total} (₹${quote.unitPrice} × ${quantity})`,
+      }
+
+      const res = await fetch("/api/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const data = (await res.json()) as QuoteApiResponse
+
+      if (res.ok && data.success) {
+        if (data.refId) setQuoteRefId(data.refId)
+        toast.success("Quote inquiry submitted successfully!", {
+          description: "Our atelier framing master will reach out to you shortly.",
+        })
+        setIsQuoteSubmitted(true)
+      } else {
+        toast.error(data.error || "Failed to submit quote request. Please try again.")
+      }
+    } catch (err: unknown) {
+      console.error("Submit quote error:", err)
+      toast.error("Network error submitting quote. Please try WhatsApp.")
+    } finally {
+      setIsSubmittingQuote(false)
+    }
   }
 
   return (
@@ -435,28 +508,71 @@ export default function StudioEditorPage(): React.JSX.Element {
             </section>
           </div>
 
-          {/* Sticky Bottom Bar with Current Total & Ask for Quote Trigger */}
-          <div className="p-2.5 px-3.5 border-t border-border bg-card/95 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
-            <div>
-              <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block">
-                Estimated Price
-              </span>
-              <span className="text-base font-bold font-mono text-foreground">
-                ₹{quote.total}
-              </span>
+          {/* Sticky Bottom Bar with Quantity Selector, Current Total & Ask for Quote Trigger */}
+          <div className="p-2.5 px-3 border-t border-border bg-card/95 backdrop-blur-md space-y-2 shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Qty:</span>
+                <div className="flex items-center rounded-lg border border-border bg-background p-0.5 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                    disabled={quantity <= 1}
+                    aria-label="Decrease quantity"
+                    className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="w-7 text-center text-xs font-mono font-bold text-foreground">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((prev) => Math.min(100, prev + 1))}
+                    aria-label="Increase quantity"
+                    className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Quick Presets: 1, 2, 5, 10 */}
+                <div className="flex items-center gap-1">
+                  {[1, 2, 5, 10].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setQuantity(preset)}
+                      className={`px-1.5 py-0.5 text-[10px] font-mono rounded cursor-pointer transition-all border ${quantity === preset
+                          ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
+                          : "bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border-transparent"
+                        }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block leading-tight">
+                  Total ({quantity}x)
+                </span>
+                <span className="text-base font-bold font-mono text-primary leading-tight">
+                  ₹{quote.total}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => setIsQuoteModalOpen(true)}
-                className="text-xs font-semibold gap-1.5 shadow-md h-8 px-3 cursor-pointer"
-              >
-                <Calculator className="w-3.5 h-3.5" />
-                Ask for Quote
-              </Button>
-            </div>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setIsQuoteModalOpen(true)}
+              className="w-full text-xs font-semibold gap-1.5 shadow-md h-8 cursor-pointer"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              Ask for Quote ({quantity} {quantity === 1 ? "Frame" : "Frames"} • ₹{quote.total})
+            </Button>
           </div>
         </div>
       </main>
@@ -478,7 +594,7 @@ export default function StudioEditorPage(): React.JSX.Element {
               Custom Fabrication Quote
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Handcrafted in our atelier with archival materials. Submit an inquiry or chat directly on WhatsApp.
+              Handcrafted in our atelier with archival materials. Transparent flat pricing — submit an inquiry or chat directly on WhatsApp.
             </DialogDescription>
           </DialogHeader>
 
@@ -496,32 +612,87 @@ export default function StudioEditorPage(): React.JSX.Element {
               <div className="p-3 bg-muted/40 rounded-xl border border-border text-xs text-left font-mono space-y-1">
                 <div>
                   <span className="text-muted-foreground">Ref No: </span>
-                  <span className="font-semibold text-foreground">#AF-{Math.floor(100000 + Math.random() * 900000)}</span>
+                  <span className="font-semibold text-foreground">{quoteRefId || "#AF-582910"}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Selected Frame: </span>
                   <span className="text-foreground">{frame.name} ({frame.ratio})</span>
                 </div>
                 <div>
+                  <span className="text-muted-foreground">Quantity: </span>
+                  <span className="text-foreground font-semibold">{quote.quantity} frame{quote.quantity > 1 ? "s" : ""}</span>
+                </div>
+                <div>
                   <span className="text-muted-foreground">Artwork Size: </span>
                   <span className="text-foreground">{quote.artWidthInches}&quot; &times; {quote.artHeightInches}&quot;</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Estimated Total: </span>
-                  <span className="font-bold text-primary">₹{quote.total}</span>
+                  <span className="text-muted-foreground">Calculation: </span>
+                  <span className="text-foreground">₹{quote.unitPrice} &times; {quote.quantity}</span>
+                </div>
+                <div className="pt-1 border-t border-border">
+                  <span className="text-muted-foreground">Total to Pay: </span>
+                  <span className="font-bold text-primary text-sm">₹{quote.total}</span>
                 </div>
               </div>
               <Button
                 type="button"
                 size="sm"
                 onClick={() => setIsQuoteModalOpen(false)}
-                className="w-full text-xs"
+                className="w-full text-xs cursor-pointer"
               >
                 Back to Studio
               </Button>
             </div>
           ) : (
             <div className="space-y-4 pt-1">
+              {/* Order Quantity Selector */}
+              <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs font-semibold text-foreground block">Order Quantity</span>
+                  <span className="text-[10px] text-muted-foreground">Order multiple identical copies of this bespoke frame</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 5, 10].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setQuantity(preset)}
+                        className={`px-2 py-0.5 text-xs font-mono rounded-md cursor-pointer transition-all border ${quantity === preset
+                            ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
+                            : "bg-background hover:bg-muted text-foreground border-border"
+                          }`}
+                      >
+                        {preset}x
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center rounded-lg border border-border bg-background p-0.5 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                      disabled={quantity <= 1}
+                      aria-label="Decrease quantity"
+                      className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 cursor-pointer"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="w-7 text-center text-xs font-mono font-bold text-foreground">
+                      {quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((prev) => Math.min(100, prev + 1))}
+                      aria-label="Increase quantity"
+                      className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Auto-set Selected Frame Details */}
               <div className="p-3 rounded-xl bg-muted/40 border border-border text-xs space-y-2">
                 <div className="flex items-center justify-between pb-1.5 border-b border-border/60">
@@ -529,7 +700,7 @@ export default function StudioEditorPage(): React.JSX.Element {
                     Auto-Configured Specifications
                   </span>
                   <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono text-[10px] font-semibold">
-                    Fixed ₹{frame.price} Moulding
+                    Fixed ₹{quote.unitPrice} / Frame
                   </span>
                 </div>
 
@@ -547,19 +718,17 @@ export default function StudioEditorPage(): React.JSX.Element {
                     <span className="text-foreground truncate">{frame.finish}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Frame Price:</span>
-                    <span className="font-mono font-semibold text-foreground">₹{frame.price}</span>
+                    <span className="text-muted-foreground">Unit Price:</span>
+                    <span className="font-mono font-semibold text-foreground">₹{quote.unitPrice}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Quantity:</span>
+                    <span className="font-mono font-semibold text-foreground">{quote.quantity} frame{quote.quantity > 1 ? "s" : ""}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Artwork Size:</span>
                     <span className="font-mono text-foreground">
                       {quote.artWidthInches}&quot; &times; {quote.artHeightInches}&quot;
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Overall Size:</span>
-                    <span className="font-mono text-foreground">
-                      {quote.totalWidthInches}&quot; &times; {quote.totalHeightInches}&quot;
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -577,8 +746,13 @@ export default function StudioEditorPage(): React.JSX.Element {
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-border/80">
-                  <span className="font-medium text-foreground text-xs">Calculated Total Estimate:</span>
-                  <span className="font-bold text-primary font-mono text-base">₹{quote.total}</span>
+                  <div>
+                    <span className="font-medium text-foreground text-xs block">Total Amount to Pay:</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      (₹{quote.unitPrice} &times; {quote.quantity} {quote.quantity === 1 ? "frame" : "frames"})
+                    </span>
+                  </div>
+                  <span className="font-bold text-primary font-mono text-lg">₹{quote.total}</span>
                 </div>
               </div>
 
@@ -590,7 +764,7 @@ export default function StudioEditorPage(): React.JSX.Element {
                   </Label>
                   <Input
                     id="quote-customer-name"
-                    placeholder="e.g. Salman Khan"
+                    placeholder="e.g. Vivek Mishra"
                     value={customerName}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomerName(e.target.value)}
                     className="text-xs h-8"
@@ -641,7 +815,7 @@ export default function StudioEditorPage(): React.JSX.Element {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsQuoteModalOpen(false)}
-                  className="text-xs"
+                  className="text-xs cursor-pointer"
                 >
                   Cancel
                 </Button>
@@ -652,22 +826,32 @@ export default function StudioEditorPage(): React.JSX.Element {
                   variant="secondary"
                   size="sm"
                   onClick={handleSendWhatsApp}
-                  className="text-xs gap-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20"
+                  className="text-xs gap-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 cursor-pointer"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
                   WhatsApp Inquiry
                 </Button>
 
-                {/* Submit to Atelier */}
+                {/* Submit to Atelier & Google Form */}
                 <Button
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={() => setIsQuoteSubmitted(true)}
-                  className="text-xs gap-1.5 font-semibold"
+                  disabled={isSubmittingQuote}
+                  onClick={handleSubmitQuote}
+                  className="text-xs gap-1.5 font-semibold cursor-pointer min-w-[125px]"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  Submit Inquiry
+                  {isSubmittingQuote ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      Submit Inquiry
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

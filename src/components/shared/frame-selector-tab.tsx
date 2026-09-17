@@ -1,11 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { Check, Sparkles } from "lucide-react"
+import { Check, Sparkles, Square, RectangleVertical, RectangleHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FrameStyle } from "@/types"
 import { FRAME_CATALOG } from "@/db/frames"
 import { ScrollFadeContainer } from "@/components/shared/scroll-fade-container"
+
+export type FrameOrientation = "all" | "square" | "portrait" | "landscape"
 
 interface FrameSelectorTabProps {
   selectedFrame: FrameStyle
@@ -21,14 +23,25 @@ export function FrameSelectorTab({
   artworkAspectRatio,
 }: FrameSelectorTabProps): React.JSX.Element {
   const [suggestOnly, setSuggestOnly] = React.useState<boolean>(false)
+  const [orientationFilter, setOrientationFilter] = React.useState<FrameOrientation>("all")
 
-  // Suggest frames matching or closest to artwork's aspect ratio
+  // Filter frames by orientation and optional aspect ratio suggestion
   const displayedFrames = React.useMemo(() => {
-    if (!suggestOnly) return FRAME_CATALOG
+    let pool = FRAME_CATALOG
+
+    if (orientationFilter === "square") {
+      pool = pool.filter((f) => f.ratio === "1:1")
+    } else if (orientationFilter === "portrait") {
+      pool = pool.filter((f) => f.ratio === "3:4" || f.ratio === "9:16")
+    } else if (orientationFilter === "landscape") {
+      pool = pool.filter((f) => f.ratio === "16:9" || f.ratio === "4:3")
+    }
+
+    if (!suggestOnly) return pool
 
     const targetRatio = artworkAspectRatio ?? 1
     // Matches within ±0.35 aspect ratio tolerance
-    const matches = FRAME_CATALOG.filter(
+    const matches = pool.filter(
       (f) => Math.abs(f.aspectRatio - targetRatio) <= 0.35
     )
 
@@ -36,17 +49,17 @@ export function FrameSelectorTab({
       return matches
     }
 
-    // Fallback to 3 closest frames by ratio distance
-    return [...FRAME_CATALOG]
+    // Fallback to 3 closest frames by ratio distance within orientation pool
+    return [...pool]
       .sort(
         (a, b) =>
           Math.abs(a.aspectRatio - targetRatio) - Math.abs(b.aspectRatio - targetRatio)
       )
       .slice(0, 3)
-  }, [suggestOnly, artworkAspectRatio])
+  }, [suggestOnly, orientationFilter, artworkAspectRatio])
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
+    <div className="space-y-3 animate-in fade-in duration-200">
       {/* Frame Selection Header */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -68,13 +81,64 @@ export function FrameSelectorTab({
             className="text-[11px] h-6 px-2.5 gap-1.5 cursor-pointer shadow-xs"
             title={
               suggestOnly
-                ? "Show all available frames in the collection"
+                ? "Show all frames within selected orientation"
                 : "Suggest frames matching your artwork's aspect ratio"
             }
           >
             <Sparkles className="w-3 h-3" />
             {suggestOnly ? "Show All" : "Suggest Frame"}
           </Button>
+        </div>
+
+        {/* Orientation Filter Tabs: All, Square, Portrait, Landscape */}
+        <div className="flex items-center gap-1 p-1 bg-muted/60 rounded-lg border border-border/60 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setOrientationFilter("all")}
+            className={`flex-1 py-1 px-1.5 rounded-md font-medium text-center transition-all cursor-pointer ${
+              orientationFilter === "all"
+                ? "bg-card text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrientationFilter("square")}
+            className={`flex-1 py-1 px-1.5 rounded-md font-medium text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+              orientationFilter === "square"
+                ? "bg-card text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Square className="w-3 h-3" />
+            Square
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrientationFilter("portrait")}
+            className={`flex-1 py-1 px-1.5 rounded-md font-medium text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+              orientationFilter === "portrait"
+                ? "bg-card text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <RectangleVertical className="w-3 h-3" />
+            Portrait
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrientationFilter("landscape")}
+            className={`flex-1 py-1 px-1.5 rounded-md font-medium text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+              orientationFilter === "landscape"
+                ? "bg-card text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <RectangleHorizontal className="w-3 h-3" />
+            Landscape
+          </button>
         </div>
 
         {/* Horizontal Scroll for Frame Cards with Natural Blend Fade */}

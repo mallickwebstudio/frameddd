@@ -10,6 +10,12 @@ import { Button } from "@/components/ui/button"
 import { ArtworkConfig, FrameStyle } from "@/types"
 import { SAMPLE_ARTWORKS } from "@/db/sample-artworks"
 import { FRAME_CATALOG } from "@/db/frames"
+import { LandingCraftsmanship } from "@/components/shared/landing-craftsmanship"
+import { LandingFeaturedFrames } from "@/components/shared/landing-featured-frames"
+import { LandingVisualizerTeaser } from "@/components/shared/landing-visualizer-teaser"
+import { LandingPricing } from "@/components/shared/landing-pricing"
+import { LandingFaq } from "@/components/shared/landing-faq"
+import { LandingCta } from "@/components/shared/landing-cta"
 
 const FEATURED_FRAMES: FrameStyle[] = [
   FRAME_CATALOG.find((f) => f.id === "gold-1-1") ?? FRAME_CATALOG[0],
@@ -258,6 +264,17 @@ export default function HomePage(): React.JSX.Element {
           </div>
         </div>
       </main>
+
+      {/* Landing Page Content Sections */}
+      <LandingCraftsmanship />
+      <LandingFeaturedFrames onSelectFrame={handleSelectFrame} />
+      <LandingVisualizerTeaser onOpenStudio={() => router.push("/studio")} />
+      <LandingPricing onOpenStudio={() => router.push("/studio")} />
+      <LandingFaq />
+      <LandingCta
+        onUploadClick={() => defaultFileInputRef.current?.click()}
+        onOpenStudio={() => router.push("/studio")}
+      />
 
       {/* Minimal Footer */}
       <HomeFooter />

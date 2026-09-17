@@ -62,6 +62,19 @@ export function FrameVisualizer({
   const position = framePosition ?? internalPosition
   const setPosition = onFramePositionChange ?? setInternalPosition
 
+  // Mouse & Touch Drag State
+  const [isDragging, setIsDragging] = React.useState<boolean>(false)
+  const dragStartRef = React.useRef<{ x: number; y: number; posX: number; posY: number }>({
+    x: 0,
+    y: 0,
+    posX: 0,
+    posY: 0,
+  })
+
+  // Touch Pinch-to-Zoom Ref
+  const touchDistanceRef = React.useRef<number | null>(null)
+  const initialZoomRef = React.useRef<number>(zoomLevel)
+
   const [canvasDimensions, setCanvasDimensions] = React.useState<{ width: number; height: number }>({
     width: 800,
     height: 450,
@@ -95,6 +108,94 @@ export function FrameVisualizer({
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [setPosition])
+
+  // Pointer event handlers for fluid mouse and touch dragging
+  const handleFramePointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (e.button !== 0) return
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    setIsDragging(true)
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      posX: position.x,
+      posY: position.y,
+    }
+  }
+
+  const handleFramePointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!isDragging) return
+    const dx = e.clientX - dragStartRef.current.x
+    const dy = e.clientY - dragStartRef.current.y
+    let targetX = dragStartRef.current.posX + dx
+    let targetY = dragStartRef.current.posY + dy
+
+    // Magnetic center snapping (threshold: 8px)
+    if (Math.abs(targetX) <= 8) targetX = 0
+    if (Math.abs(targetY) <= 8) targetY = 0
+
+    setPosition({ x: targetX, y: targetY })
+  }
+
+  const handleFramePointerUp = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (isDragging) {
+      try {
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+      } catch {}
+      setIsDragging(false)
+    }
+  }
+
+  // Ensure dragging flag is always reset if user releases pointer anywhere
+  React.useEffect(() => {
+    const handleGlobalPointerUp = (): void => {
+      setIsDragging(false)
+    }
+    window.addEventListener("pointerup", handleGlobalPointerUp)
+    window.addEventListener("pointercancel", handleGlobalPointerUp)
+    return () => {
+      window.removeEventListener("pointerup", handleGlobalPointerUp)
+      window.removeEventListener("pointercancel", handleGlobalPointerUp)
+    }
+  }, [])
+
+  // Wheel Zoom Listener on visualizer
+  const handleWheelZoom = (e: React.WheelEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    const delta = -e.deltaY * 0.0015
+    const newZoom = Math.min(2.0, Math.max(0.05, Math.round((zoomLevel + delta) * 100) / 100))
+    onZoomChange(newZoom)
+  }
+
+  // Touch Pinch-to-Zoom handlers
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>): void => {
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      )
+      touchDistanceRef.current = dist
+      initialZoomRef.current = zoomLevel
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>): void => {
+    if (e.touches.length === 2 && touchDistanceRef.current !== null) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      )
+      const factor = dist / touchDistanceRef.current
+      const newZoom = Math.min(
+        2.0,
+        Math.max(0.05, Math.round(initialZoomRef.current * factor * 100) / 100)
+      )
+      onZoomChange(newZoom)
+    }
+  }
+
+  const handleTouchEnd = (): void => {
+    touchDistanceRef.current = null
+  }
 
   // Measure actual rendered canvas container to scale frame proportionally
   React.useEffect(() => {
@@ -138,8 +239,11 @@ export function FrameVisualizer({
   }
 
   const insets = frame.innerInset || { top: 15, right: 15, bottom: 15, left: 15 }
-
   const selectedGlazing = GLAZING_OPTIONS.find((g) => g.id === glazing) ?? GLAZING_OPTIONS[0]
+
+  // Centering alignment flags for red crosshair guides (strictly only shown during active drag)
+  const isHorizontallyCentered = isDragging && Math.abs(position.x) < 2
+  const isVerticallyCentered = isDragging && Math.abs(position.y) < 2
 
   // Merge forwarded visualizerRef and local containerRef
   const setContainerRefs = React.useCallback(
@@ -157,7 +261,11 @@ export function FrameVisualizer({
       {/* 16:9 (Horizontal Video) Canvas Container */}
       <div
         ref={setContainerRefs}
-        className="w-full max-w-6xl aspect-video relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex items-center justify-center transition-all duration-300"
+        onWheel={handleWheelZoom}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="w-full max-w-6xl aspect-video relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex items-center justify-center transition-all duration-300 touch-none"
         style={{
           backgroundColor: wall.type === "color" ? wall.value : undefined,
           backgroundImage:
@@ -178,18 +286,55 @@ export function FrameVisualizer({
           }}
         />
 
-        {/* Framing Assembly Container scaled to frame aspect ratio & positioned via arrow controls */}
+        {/* Central Red Crosshair Alignment Guides */}
+        {/* 1. Vertical Red Center Line (active when horizontal position is centered) */}
+        {isHorizontallyCentered && (
+          <div className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-0.5 -translate-x-1/2 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.9)] z-30 animate-in fade-in duration-150" />
+        )}
+
+        {/* 2. Horizontal Red Center Line (active when vertical position is centered) */}
+        {isVerticallyCentered && (
+          <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.9)] z-30 animate-in fade-in duration-150" />
+        )}
+
+        {/* 3. Dead Center Glowing Intersection Target */}
+        {isHorizontallyCentered && isVerticallyCentered && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-red-500 bg-red-500/20 shadow-[0_0_14px_rgba(239,68,68,1)] z-30 flex items-center justify-center animate-in zoom-in-75 duration-150">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+          </div>
+        )}
+
+        {/* 4. Crosshair HUD Status Pill */}
+        {(isHorizontallyCentered || isVerticallyCentered) && (
+          <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 bg-red-600/90 backdrop-blur-md text-white text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full shadow-lg border border-red-400/40 z-30 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            {isHorizontallyCentered && isVerticallyCentered
+              ? "SNAPPED TO CENTER"
+              : isHorizontallyCentered
+              ? "HORIZONTAL CENTER"
+              : "VERTICAL CENTER"}
+          </div>
+        )}
+
+        {/* Framing Assembly Container: Draggable via mouse/finger drag, with cursor feedback */}
         <div
-          className="relative transition-transform duration-150 ease-out z-10 flex items-center justify-center"
+          onPointerDown={handleFramePointerDown}
+          onPointerMove={handleFramePointerMove}
+          onPointerUp={handleFramePointerUp}
+          onPointerCancel={handleFramePointerUp}
+          className={`relative transition-transform duration-100 ease-out z-10 flex items-center justify-center select-none touch-none ${
+            isDragging ? "cursor-grabbing scale-[1.002]" : "cursor-grab hover:scale-[1.001]"
+          }`}
           style={{
             width: `${Math.round(frameDisplayW)}px`,
             height: `${Math.round(frameDisplayH)}px`,
             transform: `translate(${position.x}px, ${position.y}px) scale(${zoomLevel})`,
           }}
+          title="Click and drag to move frame anywhere on wall"
         >
           {/* Inner Artwork Window (positioned precisely dead-center inside the frame moulding) */}
           <div
-            className="absolute overflow-hidden flex items-center justify-center z-10"
+            className="absolute overflow-hidden flex items-center justify-center z-10 pointer-events-none"
             style={{
               top: "50%",
               left: "50%",

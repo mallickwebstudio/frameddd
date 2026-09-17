@@ -5,13 +5,11 @@ import {
   Palette,
   Image as ImageIcon,
   Upload,
-  Camera,
   Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WallBackground } from "@/types"
 import { WALL_COLOR_SWATCHES, WALL_PRESETS } from "@/db/presets"
-import { LiveCameraModal } from "@/components/shared/live-camera-modal"
 import { ScrollFadeContainer } from "@/components/shared/scroll-fade-container"
 
 interface WallBackgroundTabProps {
@@ -26,7 +24,6 @@ export function WallBackgroundTab({
   const [customColor, setCustomColor] = React.useState<string>(
     wall.type === "color" ? wall.value : "#f3efe6"
   )
-  const [isCameraOpen, setIsCameraOpen] = React.useState<boolean>(false)
   const wallUploadRef = React.useRef<HTMLInputElement>(null)
 
   const handleCustomColorChange = (hex: string): void => {
@@ -56,15 +53,6 @@ export function WallBackgroundTab({
       })
     }
     reader.readAsDataURL(file)
-  }
-
-  const handleCameraCapture = (imageDataUrl: string): void => {
-    onWallChange({
-      type: "camera",
-      value: imageDataUrl,
-      name: "Camera Wall Snapshot",
-      brightness: 1.0,
-    })
   }
 
   return (
@@ -194,63 +182,47 @@ export function WallBackgroundTab({
       {/* 3. Stacked Section: Your Wall */}
       <div className="space-y-2.5">
         <div className="flex items-center gap-2">
-          <Camera className="w-4 h-4 text-primary" />
+          <Upload className="w-4 h-4 text-primary" />
           <label className="text-xs font-semibold text-foreground tracking-wide uppercase">
             Your Wall
           </label>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Action 1: Upload from Device */}
-          <div
-            onClick={() => wallUploadRef.current?.click()}
-            className="p-4 border-2 border-dashed border-border hover:border-primary/50 bg-card hover:bg-muted/30 rounded-xl cursor-pointer text-center flex flex-col items-center justify-center gap-2 transition-all"
-          >
-            <input
-              ref={wallUploadRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  handleCustomFileUpload(e.target.files[0])
-                }
-              }}
-            />
-            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-              <Upload className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-foreground">Upload Room Photo</p>
-              <p className="text-[10px] text-muted-foreground">From computer or phone</p>
-            </div>
+        {/* Action: Upload from Device */}
+        <div
+          onClick={() => wallUploadRef.current?.click()}
+          className="p-3.5 border-2 border-dashed border-border hover:border-primary/50 bg-card hover:bg-muted/30 rounded-xl cursor-pointer text-center flex items-center justify-center gap-3 transition-all"
+        >
+          <input
+            ref={wallUploadRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                handleCustomFileUpload(e.target.files[0])
+              }
+            }}
+          />
+          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Upload className="w-4 h-4" />
           </div>
-
-          {/* Action 2: Live Camera Snapshot */}
-          <div
-            onClick={() => setIsCameraOpen(true)}
-            className="p-4 border border-border hover:border-primary/50 bg-card hover:bg-muted/30 rounded-xl cursor-pointer text-center flex flex-col items-center justify-center gap-2 transition-all shadow-xs"
-          >
-            <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-              <Camera className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-foreground">Snap Wall with Camera</p>
-              <p className="text-[10px] text-muted-foreground">Use live device camera</p>
-            </div>
+          <div className="text-left">
+            <p className="text-xs font-semibold text-foreground">Upload Room Photo</p>
+            <p className="text-[10px] text-muted-foreground">From computer or phone</p>
           </div>
         </div>
 
         {/* Active Custom Background Indicator */}
-        {(wall.type === "upload" || wall.type === "camera") && (
+        {wall.type === "upload" && (
           <div className="p-3 rounded-xl border border-primary/30 bg-primary/5 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-md overflow-hidden bg-muted relative">
+              <div className="w-8 h-8 rounded-md overflow-hidden bg-muted relative shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={wall.value} alt="Custom Wall" className="w-full h-full object-cover" />
               </div>
-              <div>
-                <p className="text-xs font-semibold text-foreground">{wall.name}</p>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground truncate">{wall.name}</p>
                 <p className="text-[10px] text-muted-foreground">Active On-Wall Background</p>
               </div>
             </div>
@@ -258,22 +230,13 @@ export function WallBackgroundTab({
               variant="outline"
               size="xs"
               onClick={() => onWallChange(WALL_PRESETS[0])}
-              className="text-[11px] h-7"
+              className="text-[11px] h-7 shrink-0 cursor-pointer"
             >
               Reset to Preset
             </Button>
           </div>
         )}
       </div>
-
-
-
-      {/* Camera Capture Modal */}
-      <LiveCameraModal
-        isOpen={isCameraOpen}
-        onClose={() => setIsCameraOpen(false)}
-        onCapture={handleCameraCapture}
-      />
     </div>
   )
 }
