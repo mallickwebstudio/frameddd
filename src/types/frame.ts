@@ -2,6 +2,22 @@ export type FrameMaterial = "wood" | "metal" | "classic" | "modern"
 
 export type FrameRatio = "1:1" | "16:9" | "9:16" | "3:4" | "4:3"
 
+export type FrameCategoryType =
+  | "all"
+  | "standard"
+  | "vintage-ornate"
+  | "shadow-box"
+  | "floating"
+
+export interface StandardFrameSize {
+  id: string
+  name: string
+  dimensions: string
+  widthInches: number
+  heightInches: number
+  recommendedUse: string
+}
+
 export interface FrameInset {
   top: number
   right: number
@@ -13,6 +29,7 @@ export interface FrameStyle {
   id: string
   name: string
   material: FrameMaterial
+  category?: FrameCategoryType
   finish: string
   color: string
   price: number // ₹240
@@ -20,10 +37,15 @@ export interface FrameStyle {
   imageUrl: string
   ratio: FrameRatio
   aspectRatio: number // width / height numerical
+  dimensions?: string // e.g. "12×12\"" or "16×9\""
   innerInset: FrameInset // percentage insets for inner transparent opening
   rotation?: number // 0 or 90
   mouldingWidthRange?: [number, number] // min and max inches
   defaultWidth?: number // inches
+  depthInches?: number // frame depth (e.g. 1.75" for shadow box)
+  useNineSlice?: boolean // auto-adjusting 9-slice frame scaling
+  sliceBorder?: number | string // pixel or percentage inset for corners in master PNG
+  sliceRepeat?: "repeat" | "round" | "stretch" // edge tiling mode
   description: string
   badge?: string
   // Visual rendering properties

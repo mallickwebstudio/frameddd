@@ -45,18 +45,6 @@ export function StudioHeader({
         </div>
       </div>
 
-      {/* Frame Dimensions & Quick Specs */}
-      <div className="hidden md:flex items-center gap-2 bg-muted/60 px-3 py-1.5 rounded-full border border-border/80 text-xs">
-        <span className="text-muted-foreground">Art:</span>
-        <span className="font-semibold text-foreground">
-          {quote.artWidthInches}&quot; &times; {quote.artHeightInches}&quot;
-        </span>
-        <span className="text-muted-foreground/50 mx-0.5">•</span>
-        <span className="text-muted-foreground">Overall Frame:</span>
-        <span className="font-semibold text-foreground">
-          {quote.totalWidthInches}&quot; &times; {quote.totalHeightInches}&quot;
-        </span>
-      </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 sm:gap-3">

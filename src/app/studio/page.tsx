@@ -14,9 +14,10 @@ import {
   Plus,
   Minus,
   Loader2,
+  ChevronDown,
 } from "lucide-react"
 import { toast } from "sonner"
-import { StudioHeader } from "@/components/shared/studio-header"
+import { HomeNavbar } from "@/components/shared/home-navbar"
 import { FrameVisualizer } from "@/components/shared/frame-visualizer"
 import { ArtworkUploadTab } from "@/components/shared/artwork-upload-tab"
 import { FrameSelectorTab } from "@/components/shared/frame-selector-tab"
@@ -32,6 +33,7 @@ import {
   GlazingType,
   HangingHardware,
   MatConfig,
+  StandardFrameSize,
   WallBackground,
   QuoteRequestBody,
   QuoteApiResponse,
@@ -48,6 +50,7 @@ export default function StudioEditorPage(): React.JSX.Element {
   // Studio State
   const [artwork, setArtwork] = React.useState<ArtworkConfig>(SAMPLE_ARTWORKS[0])
   const [frame, setFrame] = React.useState<FrameStyle>(FRAME_CATALOG[0])
+  const [selectedSize, setSelectedSize] = React.useState<StandardFrameSize | null>(null)
   const [mouldingWidthInches, setMouldingWidthInches] = React.useState<number>(
     FRAME_CATALOG[0].defaultWidth ?? 1.25
   )
@@ -85,6 +88,34 @@ export default function StudioEditorPage(): React.JSX.Element {
   const [isSubmittingQuote, setIsSubmittingQuote] = React.useState<boolean>(false)
   const [quoteRefId, setQuoteRefId] = React.useState<string>("")
 
+  // Collapsible Accordion Sections State
+  const [openSections, setOpenSections] = React.useState<{
+    photo: boolean
+    frame: boolean
+    wall: boolean
+  }>({
+    photo: true,
+    frame: true,
+    wall: true,
+  })
+
+  const toggleSection = (key: "photo" | "frame" | "wall"): void => {
+    setOpenSections((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  const allSectionsOpen = openSections.photo && openSections.frame && openSections.wall
+  const toggleAllSections = (): void => {
+    const nextState = !allSectionsOpen
+    setOpenSections({
+      photo: nextState,
+      frame: nextState,
+      wall: nextState,
+    })
+  }
+
   const visualizerRef = React.useRef<HTMLDivElement>(null)
 
   // Load custom artwork or selected frame from session storage if selected on homepage
@@ -101,7 +132,14 @@ export default function StudioEditorPage(): React.JSX.Element {
       if (storedFrame) {
         const parsedFrame = JSON.parse(storedFrame) as FrameStyle
         if (parsedFrame && parsedFrame.id) {
-          const match = FRAME_CATALOG.find((f) => f.id === parsedFrame.id) ?? parsedFrame
+          const match =
+            FRAME_CATALOG.find(
+              (f) =>
+                f.id === parsedFrame.id ||
+                (parsedFrame.id === "gold-1-1" && f.id === "vintage-gold-01") ||
+                (parsedFrame.id === "cyan-1-1" && f.id === "vintage-cyan-01") ||
+                (parsedFrame.id === "purple-1-1" && f.id === "vintage-purple-01")
+            ) ?? FRAME_CATALOG[0]
           setFrame(match)
           setMouldingWidthInches(match.defaultWidth ?? 1.25)
         }
@@ -111,10 +149,16 @@ export default function StudioEditorPage(): React.JSX.Element {
     }
   }, [])
 
-  // Fabrication Quote calculation with quantity
+  // Fabrication Quote calculation with quantity and active size
   const quote = React.useMemo(() => {
+    const artW = selectedSize ? selectedSize.widthInches : artwork.originalWidthInches
+    const artH = selectedSize ? selectedSize.heightInches : artwork.originalHeightInches
+    const effectiveArtwork = selectedSize
+      ? { ...artwork, originalWidthInches: artW, originalHeightInches: artH }
+      : artwork
+
     return calculateFabricationQuote(
-      artwork,
+      effectiveArtwork,
       frame,
       mouldingWidthInches,
       mat,
@@ -122,7 +166,7 @@ export default function StudioEditorPage(): React.JSX.Element {
       hardware,
       quantity
     )
-  }, [artwork, frame, mouldingWidthInches, mat, glazing, hardware, quantity])
+  }, [artwork, selectedSize, frame, mouldingWidthInches, mat, glazing, hardware, quantity])
 
   // Frame selection handler
   const handleSelectFrame = (newFrame: FrameStyle): void => {
@@ -191,7 +235,22 @@ export default function StudioEditorPage(): React.JSX.Element {
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       // 3. Compute Frame Assembly Dimensions accurately scaled by zoomLevel and adjusted by framePosition
-      const frameRatio = frame.aspectRatio || 1
+      let effectiveArtRatio = artwork.aspectRatio
+      if (!effectiveArtRatio || effectiveArtRatio <= 0) {
+        effectiveArtRatio =
+          artwork.originalWidthInches && artwork.originalHeightInches
+            ? artwork.originalWidthInches / artwork.originalHeightInches
+            : frame.aspectRatio || 1
+      }
+      if (artwork.rotation === 90 || artwork.rotation === 270) {
+        effectiveArtRatio = 1 / effectiveArtRatio
+      }
+
+      const frameRatio = selectedSize
+        ? selectedSize.widthInches / selectedSize.heightInches
+        : frame.useNineSlice || !frame.imageUrl
+        ? effectiveArtRatio
+        : frame.aspectRatio || 1
       const baseMaxW = canvas.width * 0.72
       const baseMaxH = canvas.height * 0.72
 
@@ -219,6 +278,16 @@ export default function StudioEditorPage(): React.JSX.Element {
       const frameY = centerY - frameH / 2
       const insets = frame.innerInset || { top: 15, right: 15, bottom: 15, left: 15 }
 
+      // Moulding border thickness for export canvas
+      const canvasMoulding = Math.max(
+        16,
+        Math.round(
+          Math.min(frameW, frameH) *
+            0.09 *
+            (mouldingWidthInches / (frame.defaultWidth || 1.25))
+        )
+      )
+
       // 4. Drop Shadow behind frame assembly
       ctx.save()
       ctx.shadowColor = "rgba(0, 0, 0, 0.65)"
@@ -229,10 +298,22 @@ export default function StudioEditorPage(): React.JSX.Element {
       ctx.restore()
 
       // 5. Inner Artwork & Mat Window
-      const artWindowW = frameW * (Math.max(10, 100 - insets.left - insets.right) / 100)
-      const artWindowH = frameH * (Math.max(10, 100 - insets.top - insets.bottom) / 100)
-      const artWindowX = frameX + (frameW - artWindowW) / 2
-      const artWindowY = frameY + (frameH - artWindowH) / 2
+      let artWindowX: number
+      let artWindowY: number
+      let artWindowW: number
+      let artWindowH: number
+
+      if (frame.useNineSlice || !frame.imageUrl) {
+        artWindowX = frameX + canvasMoulding - 1
+        artWindowY = frameY + canvasMoulding - 1
+        artWindowW = Math.max(0, frameW - 2 * (canvasMoulding - 1))
+        artWindowH = Math.max(0, frameH - 2 * (canvasMoulding - 1))
+      } else {
+        artWindowW = frameW * (Math.max(10, 100 - insets.left - insets.right) / 100)
+        artWindowH = frameH * (Math.max(10, 100 - insets.top - insets.bottom) / 100)
+        artWindowX = frameX + (frameW - artWindowW) / 2
+        artWindowY = frameY + (frameH - artWindowH) / 2
+      }
 
       // Matboard
       if (mat.enabled) {
@@ -243,10 +324,10 @@ export default function StudioEditorPage(): React.JSX.Element {
       const matPad = mat.enabled ? Math.max(8, Math.round(mat.widthInches * 10)) : 0
       const artX = artWindowX + matPad
       const artY = artWindowY + matPad
-      const artW = artWindowW - 2 * matPad
-      const artH = artWindowH - 2 * matPad
+      const artW = Math.max(0, artWindowW - 2 * matPad)
+      const artH = Math.max(0, artWindowH - 2 * matPad)
 
-      // Draw centered artwork image
+      // Draw centered artwork image with aspect-ratio-aware cropping (object-fit: cover)
       try {
         const artImg = await new Promise<HTMLImageElement>((resolve, reject) => {
           const img = new Image()
@@ -261,12 +342,33 @@ export default function StudioEditorPage(): React.JSX.Element {
         ctx.rect(artX, artY, artW, artH)
         ctx.clip()
 
+        // Calculate source rectangle for centered object-cover crop
+        const imgW = artImg.naturalWidth || artImg.width
+        const imgH = artImg.naturalHeight || artImg.height
+        const imgAspect = imgW / imgH
+        const targetAspect = artW / artH
+
+        let sx = 0
+        let sy = 0
+        let sw = imgW
+        let sh = imgH
+
+        if (imgAspect > targetAspect) {
+          // Source image wider than target container: crop left and right
+          sw = Math.round(imgH * targetAspect)
+          sx = Math.round((imgW - sw) / 2)
+        } else {
+          // Source image taller than target container: crop top and bottom
+          sh = Math.round(imgW / targetAspect)
+          sy = Math.round((imgH - sh) / 2)
+        }
+
         if (artwork.rotation) {
           ctx.translate(artX + artW / 2, artY + artH / 2)
           ctx.rotate((artwork.rotation * Math.PI) / 180)
-          ctx.drawImage(artImg, -artW / 2, -artH / 2, artW, artH)
+          ctx.drawImage(artImg, sx, sy, sw, sh, -artW / 2, -artH / 2, artW, artH)
         } else {
-          ctx.drawImage(artImg, artX, artY, artW, artH)
+          ctx.drawImage(artImg, sx, sy, sw, sh, artX, artY, artW, artH)
         }
         ctx.restore()
       } catch {
@@ -274,7 +376,7 @@ export default function StudioEditorPage(): React.JSX.Element {
         ctx.fillRect(artX, artY, artW, artH)
       }
 
-      // 6. Draw Frame Moulding PNG (with 90deg rotation if applicable)
+      // 6. Draw Frame Moulding (9-Slice, Legacy Overlay, or Procedural 3D Standard Moulding)
       if (frame.imageUrl) {
         try {
           const frameImg = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -286,7 +388,46 @@ export default function StudioEditorPage(): React.JSX.Element {
           })
 
           ctx.save()
-          if (frame.rotation === 90) {
+          if (frame.useNineSlice) {
+            let sliceRatio = 0.15
+            if (typeof frame.sliceBorder === "number") {
+              sliceRatio = frame.sliceBorder > 1 ? frame.sliceBorder / 100 : frame.sliceBorder
+            } else if (typeof frame.sliceBorder === "string") {
+              sliceRatio = parseFloat(frame.sliceBorder) / 100 || 0.15
+            }
+
+            const sw = frameImg.naturalWidth || frameImg.width
+            const sh = frameImg.naturalHeight || frameImg.height
+            const sTop = Math.round(sh * sliceRatio)
+            const sRight = Math.round(sw * sliceRatio)
+            const sBottom = Math.round(sh * sliceRatio)
+            const sLeft = Math.round(sw * sliceRatio)
+            const sMidW = Math.max(1, sw - sLeft - sRight)
+            const sMidH = Math.max(1, sh - sTop - sBottom)
+
+            const bTop = canvasMoulding
+            const bRight = canvasMoulding
+            const bBottom = canvasMoulding
+            const bLeft = canvasMoulding
+            const dMidW = Math.max(0, frameW - bLeft - bRight)
+            const dMidH = Math.max(0, frameH - bTop - bBottom)
+
+            // 4 Corners
+            ctx.drawImage(frameImg, 0, 0, sLeft, sTop, frameX, frameY, bLeft, bTop)
+            ctx.drawImage(frameImg, sw - sRight, 0, sRight, sTop, frameX + frameW - bRight, frameY, bRight, bTop)
+            ctx.drawImage(frameImg, 0, sh - sBottom, sLeft, sBottom, frameX, frameY + frameH - bBottom, bLeft, bBottom)
+            ctx.drawImage(frameImg, sw - sRight, sh - sBottom, sRight, sBottom, frameX + frameW - bRight, frameY + frameH - bBottom, bRight, bBottom)
+
+            // 4 Edges
+            if (dMidW > 0) {
+              ctx.drawImage(frameImg, sLeft, 0, sMidW, sTop, frameX + bLeft, frameY, dMidW, bTop)
+              ctx.drawImage(frameImg, sLeft, sh - sBottom, sMidW, sBottom, frameX + bLeft, frameY + frameH - bBottom, dMidW, bBottom)
+            }
+            if (dMidH > 0) {
+              ctx.drawImage(frameImg, 0, sTop, sLeft, sMidH, frameX, frameY + bTop, bLeft, dMidH)
+              ctx.drawImage(frameImg, sw - sRight, sTop, sRight, sMidH, frameX + frameW - bRight, frameY + bTop, bRight, dMidH)
+            }
+          } else if (frame.rotation === 90) {
             ctx.translate(frameX + frameW / 2, frameY + frameH / 2)
             ctx.rotate((90 * Math.PI) / 180)
             ctx.drawImage(frameImg, -frameH / 2, -frameW / 2, frameH, frameW)
@@ -299,6 +440,74 @@ export default function StudioEditorPage(): React.JSX.Element {
           ctx.lineWidth = 16
           ctx.strokeRect(frameX, frameY, frameW, frameH)
         }
+      } else {
+        // Procedural 3D Moulding for Standard Frames (Realistic 45° Miter Joinery & Shading)
+        ctx.save()
+
+        // 1. Top Bevel Moulding (Highlighted from top ambient light)
+        ctx.beginPath()
+        ctx.moveTo(frameX, frameY)
+        ctx.lineTo(frameX + frameW, frameY)
+        ctx.lineTo(frameX + frameW - canvasMoulding, frameY + canvasMoulding)
+        ctx.lineTo(frameX + canvasMoulding, frameY + canvasMoulding)
+        ctx.closePath()
+        ctx.fillStyle = frame.color
+        ctx.fill()
+        ctx.fillStyle = "rgba(255, 255, 255, 0.15)"
+        ctx.fill()
+
+        // 2. Left Bevel Moulding (Soft light wash)
+        ctx.beginPath()
+        ctx.moveTo(frameX, frameY)
+        ctx.lineTo(frameX + canvasMoulding, frameY + canvasMoulding)
+        ctx.lineTo(frameX + canvasMoulding, frameY + frameH - canvasMoulding)
+        ctx.lineTo(frameX, frameY + frameH)
+        ctx.closePath()
+        ctx.fillStyle = frame.color
+        ctx.fill()
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)"
+        ctx.fill()
+
+        // 3. Right Bevel Moulding (Side ambient drop)
+        ctx.beginPath()
+        ctx.moveTo(frameX + frameW, frameY)
+        ctx.lineTo(frameX + frameW, frameY + frameH)
+        ctx.lineTo(frameX + frameW - canvasMoulding, frameY + frameH - canvasMoulding)
+        ctx.lineTo(frameX + frameW - canvasMoulding, frameY + canvasMoulding)
+        ctx.closePath()
+        ctx.fillStyle = frame.color
+        ctx.fill()
+        ctx.fillStyle = "rgba(0, 0, 0, 0.14)"
+        ctx.fill()
+
+        // 4. Bottom Bevel Moulding (Under shadow)
+        ctx.beginPath()
+        ctx.moveTo(frameX, frameY + frameH)
+        ctx.lineTo(frameX + canvasMoulding, frameY + frameH - canvasMoulding)
+        ctx.lineTo(frameX + frameW - canvasMoulding, frameY + frameH - canvasMoulding)
+        ctx.lineTo(frameX + frameW, frameY + frameH)
+        ctx.closePath()
+        ctx.fillStyle = frame.color
+        ctx.fill()
+        ctx.fillStyle = "rgba(0, 0, 0, 0.26)"
+        ctx.fill()
+
+        // 5. Inner Rabbet Lip Shadow
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.45)"
+        ctx.lineWidth = 3
+        ctx.strokeRect(
+          frameX + canvasMoulding,
+          frameY + canvasMoulding,
+          frameW - 2 * canvasMoulding,
+          frameH - 2 * canvasMoulding
+        )
+
+        // 6. Outer Clean Rim Line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"
+        ctx.lineWidth = 1
+        ctx.strokeRect(frameX, frameY, frameW, frameH)
+
+        ctx.restore()
       }
 
       // 7. Watermark & Atelier Brand Footer
@@ -381,8 +590,8 @@ export default function StudioEditorPage(): React.JSX.Element {
         frame.aspectRatio === 1
           ? "Square (1:1)"
           : (frame.aspectRatio || 1) > 1
-          ? `Landscape (${frame.ratio})`
-          : `Portrait (${frame.ratio})`
+            ? `Landscape (${frame.ratio})`
+            : `Portrait (${frame.ratio})`
 
       const payload: QuoteRequestBody = {
         name,
@@ -423,20 +632,19 @@ export default function StudioEditorPage(): React.JSX.Element {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       {/* Top Header Navigation */}
-      <StudioHeader
-        quote={quote}
-        onOpenQuoteModal={() => setIsQuoteModalOpen(true)}
+      <HomeNavbar
+        page="studio"
         onExportMockup={handleExportMockup}
-        onBackHome={() => router.push("/")}
       />
 
       {/* Main Studio Workspace */}
       <main className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         {/* Left / Center: Default 16:9 Canvas On-Wall Visualizer */}
-        <div className="flex-1 relative flex flex-col h-[46vh] sm:h-[50vh] lg:h-[calc(100vh-61px)] min-h-[260px] sm:min-h-[350px] lg:min-h-[480px] bg-neutral-950 border-r border-border items-center justify-center p-2 sm:p-4 overflow-hidden">
+        <div className="flex-1 relative flex flex-col h-[46vh] sm:h-[50vh] lg:h-[calc(100vh-61px)] min-h-[260px] sm:min-h-[350px] lg:min-h-[480px] bg-neutral-950 border-r border-border items-center justify-center overflow-hidden">
           <FrameVisualizer
             artwork={artwork}
             frame={frame}
+            selectedSize={selectedSize}
             mouldingWidthInches={mouldingWidthInches}
             mat={mat}
             wall={wall}
@@ -458,53 +666,125 @@ export default function StudioEditorPage(): React.JSX.Element {
         {/* Right: Customization Sidebar - Stacked Section-Wise (350px width) */}
         <div className="w-full lg:w-[350px] xl:w-[350px] shrink-0 flex flex-col h-[54vh] lg:h-[calc(100vh-61px)] bg-card border-t lg:border-t-0 shadow-lg">
           {/* Stacked Sections Panel with Distinct Section Backgrounds */}
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 space-y-3.5">
+          <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 space-y-2.5">
+            {/* Accordion Quick Control */}
+            <div className="flex items-center justify-between px-1 pb-0.5">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Customization Studio
+              </span>
+              <button
+                type="button"
+                onClick={toggleAllSections}
+                className="text-[11px] font-medium text-primary hover:underline cursor-pointer transition-colors"
+              >
+                {allSectionsOpen ? "Collapse all" : "Expand all"}
+              </button>
+            </div>
+
             {/* Section 1: Picture / Artwork (Sky Blue Theme) */}
-            <section className="bg-sky-500/[0.04] dark:bg-sky-500/[0.08] border border-sky-500/20 rounded-2xl p-3 space-y-3 shadow-2xs">
-              <div className="flex items-center gap-2 pb-2 border-b border-sky-500/15 text-sky-600 dark:text-sky-400">
-                <div className="w-5 h-5 rounded-md bg-sky-500/15 flex items-center justify-center shrink-0">
-                  <ImageIcon className="w-3 h-3" />
+            <section className="bg-sky-500/[0.04] dark:bg-sky-500/[0.08] border border-sky-500/20 rounded-2xl p-3 shadow-2xs transition-all">
+              <button
+                type="button"
+                onClick={() => toggleSection("photo")}
+                className={`w-full flex items-center justify-between gap-2 text-sky-600 dark:text-sky-400 cursor-pointer text-left group ${openSections.photo ? "pb-2" : ""
+                  }`}
+                aria-expanded={openSections.photo}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-sky-500/15 flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-3 h-3" />
+                  </div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider group-hover:underline">
+                    1. Photo &amp; Artwork
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider">
-                  1. Photo &amp; Artwork
-                </span>
-              </div>
-              <ArtworkUploadTab
-                artwork={artwork}
-                onSelectArtwork={setArtwork}
-                onRotateArtwork={handleRotateArtwork}
-                onDimensionsChange={handleDimensionsChange}
-              />
+                <ChevronDown
+                  className={`w-4 h-4 text-sky-600/70 dark:text-sky-400/70 transition-transform duration-200 ${openSections.photo ? "rotate-180" : ""
+                    }`}
+                />
+              </button>
+              {openSections.photo && (
+                <div className="pt-2 border-t border-sky-500/15 animate-in fade-in duration-150">
+                  <ArtworkUploadTab
+                    artwork={artwork}
+                    onSelectArtwork={setArtwork}
+                    onRotateArtwork={handleRotateArtwork}
+                    onDimensionsChange={handleDimensionsChange}
+                  />
+                </div>
+              )}
             </section>
 
             {/* Section 2: Frame Selection (Amber Gold Theme) */}
-            <section className="bg-amber-500/[0.04] dark:bg-amber-500/[0.08] border border-amber-500/20 rounded-2xl p-3 space-y-3 shadow-2xs">
-              <div className="flex items-center gap-2 pb-2 border-b border-amber-500/15 text-amber-600 dark:text-amber-400">
-                <div className="w-5 h-5 rounded-md bg-amber-500/15 flex items-center justify-center shrink-0">
-                  <FrameIcon className="w-3 h-3" />
+            <section className="bg-amber-500/[0.04] dark:bg-amber-500/[0.08] border border-amber-500/20 rounded-2xl p-3 shadow-2xs transition-all">
+              <button
+                type="button"
+                onClick={() => toggleSection("frame")}
+                className={`w-full flex items-center justify-between gap-2 text-amber-600 dark:text-amber-400 cursor-pointer text-left group ${openSections.frame ? "pb-2" : ""
+                  }`}
+                aria-expanded={openSections.frame}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-amber-500/15 flex items-center justify-center shrink-0">
+                    <FrameIcon className="w-3 h-3" />
+                  </div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider group-hover:underline">
+                    2. Frame Selection
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider">
-                  2. Frame Selection
-                </span>
-              </div>
-              <FrameSelectorTab
-                selectedFrame={frame}
-                onSelectFrame={handleSelectFrame}
-                artworkAspectRatio={artwork.aspectRatio}
-              />
+                <ChevronDown
+                  className={`w-4 h-4 text-amber-600/70 dark:text-amber-400/70 transition-transform duration-200 ${openSections.frame ? "rotate-180" : ""
+                    }`}
+                />
+              </button>
+              {openSections.frame && (
+                <div className="pt-2 border-t border-amber-500/15 animate-in fade-in duration-150">
+                  <FrameSelectorTab
+                    selectedFrame={frame}
+                    onSelectFrame={handleSelectFrame}
+                    selectedSize={selectedSize}
+                    onSelectSize={setSelectedSize}
+                    matWidthInches={mat.widthInches}
+                    onMatWidthChange={(w) =>
+                      setMat((prev) => ({
+                        ...prev,
+                        widthInches: w,
+                        enabled: true,
+                      }))
+                    }
+                    artworkAspectRatio={artwork.aspectRatio}
+                  />
+                </div>
+              )}
             </section>
 
             {/* Section 3: Wall Background (Emerald Green Theme) */}
-            <section className="bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] border border-emerald-500/20 rounded-2xl p-3 space-y-3 shadow-2xs">
-              <div className="flex items-center gap-2 pb-2 border-b border-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <div className="w-5 h-5 rounded-md bg-emerald-500/15 flex items-center justify-center shrink-0">
-                  <Palette className="w-3 h-3" />
+            <section className="bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] border border-emerald-500/20 rounded-2xl p-3 shadow-2xs transition-all">
+              <button
+                type="button"
+                onClick={() => toggleSection("wall")}
+                className={`w-full flex items-center justify-between gap-2 text-emerald-600 dark:text-emerald-400 cursor-pointer text-left group ${openSections.wall ? "pb-2" : ""
+                  }`}
+                aria-expanded={openSections.wall}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-emerald-500/15 flex items-center justify-center shrink-0">
+                    <Palette className="w-3 h-3" />
+                  </div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider group-hover:underline">
+                    3. Wall Background
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider">
-                  3. Wall Background
-                </span>
-              </div>
-              <WallBackgroundTab wall={wall} onWallChange={setWall} />
+                <ChevronDown
+                  className={`w-4 h-4 text-emerald-600/70 dark:text-emerald-400/70 transition-transform duration-200 ${openSections.wall ? "rotate-180" : ""
+                    }`}
+                />
+              </button>
+              {openSections.wall && (
+                <div className="pt-2 border-t border-emerald-500/15 animate-in fade-in duration-150">
+                  <WallBackgroundTab wall={wall} onWallChange={setWall} />
+                </div>
+              )}
             </section>
           </div>
 
@@ -544,8 +824,8 @@ export default function StudioEditorPage(): React.JSX.Element {
                       type="button"
                       onClick={() => setQuantity(preset)}
                       className={`px-1.5 py-0.5 text-[10px] font-mono rounded cursor-pointer transition-all border ${quantity === preset
-                          ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
-                          : "bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border-transparent"
+                        ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
+                        : "bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border-transparent"
                         }`}
                     >
                       {preset}
@@ -660,8 +940,8 @@ export default function StudioEditorPage(): React.JSX.Element {
                         type="button"
                         onClick={() => setQuantity(preset)}
                         className={`px-2 py-0.5 text-xs font-mono rounded-md cursor-pointer transition-all border ${quantity === preset
-                            ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
-                            : "bg-background hover:bg-muted text-foreground border-border"
+                          ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
+                          : "bg-background hover:bg-muted text-foreground border-border"
                           }`}
                       >
                         {preset}x

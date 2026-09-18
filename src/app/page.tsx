@@ -10,18 +10,14 @@ import { Button } from "@/components/ui/button"
 import { ArtworkConfig, FrameStyle } from "@/types"
 import { SAMPLE_ARTWORKS } from "@/db/sample-artworks"
 import { FRAME_CATALOG } from "@/db/frames"
-import { LandingCraftsmanship } from "@/components/shared/landing-craftsmanship"
 import { LandingFeaturedFrames } from "@/components/shared/landing-featured-frames"
-import { LandingVisualizerTeaser } from "@/components/shared/landing-visualizer-teaser"
-import { LandingPricing } from "@/components/shared/landing-pricing"
-import { LandingFaq } from "@/components/shared/landing-faq"
-import { LandingCta } from "@/components/shared/landing-cta"
+import { LandingPdfThemeSections } from "@/components/shared/landing-pdf-theme-sections"
 
 const FEATURED_FRAMES: FrameStyle[] = [
-  FRAME_CATALOG.find((f) => f.id === "gold-1-1") ?? FRAME_CATALOG[0],
-  FRAME_CATALOG.find((f) => f.id === "cyan-16-9") ?? FRAME_CATALOG[1],
-  FRAME_CATALOG.find((f) => f.id === "purple-1-1") ?? FRAME_CATALOG[2],
-  FRAME_CATALOG.find((f) => f.id === "gold-16-9") ?? FRAME_CATALOG[3],
+  FRAME_CATALOG.find((f) => f.id === "vintage-gold-01") ?? FRAME_CATALOG[0],
+  FRAME_CATALOG.find((f) => f.id === "vintage-cyan-01") ?? FRAME_CATALOG[1],
+  FRAME_CATALOG.find((f) => f.id === "vintage-green-01") ?? FRAME_CATALOG[2],
+  FRAME_CATALOG.find((f) => f.id === "vintage-red-01") ?? FRAME_CATALOG[3],
 ]
 
 export default function HomePage(): React.JSX.Element {
@@ -95,6 +91,9 @@ export default function HomePage(): React.JSX.Element {
   const handleSelectFrame = (selectedFrame: FrameStyle): void => {
     try {
       sessionStorage.setItem("framed_frame", JSON.stringify(selectedFrame))
+      if (!sessionStorage.getItem("framed_artwork")) {
+        sessionStorage.setItem("framed_artwork", JSON.stringify(SAMPLE_ARTWORKS[0]))
+      }
     } catch (err: unknown) {
       console.warn("Storage quota or error:", err)
     }
@@ -110,12 +109,12 @@ export default function HomePage(): React.JSX.Element {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col p-4 sm:p-8 justify-center items-center">
+      <main className="flex-1 flex flex-col p-4 sm:p-8 justify-center items-center bg-[#0B2118]">
         {/* Whole Screen Cover styled inside an Input File Dashed Border */}
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDefaultDrop}
-          className="w-full max-w-5xl border-2 border-dashed border-border/80 hover:border-primary/60 bg-card/60 backdrop-blur-md rounded-3xl p-6 sm:p-12 flex flex-col items-center justify-between text-center relative shadow-2xl transition-all"
+          className="w-full max-w-5xl border-2 border-dashed border-border/80 hover:border-primary/60 bg-card backdrop-blur-md rounded-3xl p-6 sm:p-12 flex flex-col items-center justify-between text-center relative shadow-2xl transition-all"
         >
           {/* Hidden File Input */}
           <input
@@ -148,7 +147,7 @@ export default function HomePage(): React.JSX.Element {
               className="w-full py-6 text-sm font-semibold gap-2 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl cursor-pointer"
             >
               <Upload className="w-4 h-4" />
-              Upload Your Picture (or Drag &amp; Drop Here)
+              Upload or Drop Your Picture
             </Button>
 
             {/* Quick Start Triggers: Sample Artworks OR Signature Frames */}
@@ -198,14 +197,27 @@ export default function HomePage(): React.JSX.Element {
                         className="group relative aspect-square rounded-lg border border-border overflow-hidden hover:ring-2 hover:ring-primary transition-all bg-muted/30 p-1 flex items-center justify-center cursor-pointer shadow-2xs"
                         title={`${f.name} (${f.ratio})`}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={f.imageUrl}
-                          alt={f.name}
-                          className={`w-full h-full object-contain filter drop-shadow-2xs group-hover:scale-110 transition-transform ${
-                            f.rotation === 90 ? "rotate-90 scale-85" : ""
-                          }`}
-                        />
+                        {f.imageUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={f.imageUrl}
+                            alt={f.name}
+                            className={`w-full h-full object-contain filter drop-shadow-2xs group-hover:scale-110 transition-transform ${
+                              f.rotation === 90 ? "rotate-90 scale-85" : ""
+                            }`}
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full rounded-md flex items-center justify-center p-1 group-hover:scale-105 transition-transform"
+                            style={{
+                              background: f.textureGradient || f.color,
+                              boxShadow: f.boxShadowCss || "0 2px 6px rgba(0,0,0,0.3)",
+                              border: f.borderCss || "1px solid rgba(255,255,255,0.15)",
+                            }}
+                          >
+                            <div className="w-full h-full rounded-xs bg-[#fbfaf8] dark:bg-[#1f1e1d] flex items-center justify-center shadow-inner" />
+                          </div>
+                        )}
                         <span className="absolute bottom-0.5 right-0.5 text-[8px] font-mono px-0.5 rounded bg-background/80 text-muted-foreground scale-90">
                           {f.ratio}
                         </span>
@@ -265,15 +277,12 @@ export default function HomePage(): React.JSX.Element {
         </div>
       </main>
 
-      {/* Landing Page Content Sections */}
-      <LandingCraftsmanship />
-      <LandingFeaturedFrames onSelectFrame={handleSelectFrame} />
-      <LandingVisualizerTeaser onOpenStudio={() => router.push("/studio")} />
-      <LandingPricing onOpenStudio={() => router.push("/studio")} />
-      <LandingFaq />
-      <LandingCta
-        onUploadClick={() => defaultFileInputRef.current?.click()}
+      {/* Landing Page Content Sections: ART FRAME Story Narrative */}
+      <LandingPdfThemeSections
         onOpenStudio={() => router.push("/studio")}
+        onUploadClick={() => defaultFileInputRef.current?.click()}
+        onSelectFrame={handleSelectFrame}
+        featuredFramesSlot={<LandingFeaturedFrames onSelectFrame={handleSelectFrame} />}
       />
 
       {/* Minimal Footer */}

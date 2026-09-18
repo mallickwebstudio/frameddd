@@ -7,12 +7,14 @@ interface ScrollFadeContainerProps extends React.HTMLAttributes<HTMLDivElement> 
   children: React.ReactNode
   className?: string
   contentClassName?: string
+  fadeWidth?: number
 }
 
 export function ScrollFadeContainer({
   children,
   className,
   contentClassName,
+  fadeWidth = 20,
   ...props
 }: ScrollFadeContainerProps): React.JSX.Element {
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -45,31 +47,33 @@ export function ScrollFadeContainer({
     }
   }, [checkScroll])
 
+  const fw = fadeWidth
+
   return (
-    <div className={cn("relative group/fade w-full overflow-hidden -mx-1", className)} {...props}>
+    <div className={cn("relative group/fade w-full overflow-hidden", className ? className : "-mx-1")} {...props}>
       {/* Scrollable Container with Horizontal Padding and CSS Mask Fade */}
       <div
         ref={scrollRef}
         className={cn(
-          "flex gap-2.5 overflow-x-auto px-4 pb-2 pt-1 no-scrollbar scroll-smooth",
-          contentClassName
+          "flex overflow-x-auto no-scrollbar scroll-smooth",
+          contentClassName ? contentClassName : "gap-2.5 px-4 pb-2 pt-1"
         )}
         style={{
           maskImage:
             canScrollLeft && canScrollRight
-              ? "linear-gradient(to right, transparent 0%, black 20px, black calc(100% - 20px), transparent 100%)"
+              ? `linear-gradient(to right, transparent 0%, black ${fw}px, black calc(100% - ${fw}px), transparent 100%)`
               : canScrollLeft
-              ? "linear-gradient(to right, transparent 0%, black 20px, black 100%)"
+              ? `linear-gradient(to right, transparent 0%, black ${fw}px, black 100%)`
               : canScrollRight
-              ? "linear-gradient(to right, black 0%, black calc(100% - 20px), transparent 100%)"
+              ? `linear-gradient(to right, black 0%, black calc(100% - ${fw}px), transparent 100%)`
               : undefined,
           WebkitMaskImage:
             canScrollLeft && canScrollRight
-              ? "linear-gradient(to right, transparent 0%, black 20px, black calc(100% - 20px), transparent 100%)"
+              ? `linear-gradient(to right, transparent 0%, black ${fw}px, black calc(100% - ${fw}px), transparent 100%)`
               : canScrollLeft
-              ? "linear-gradient(to right, transparent 0%, black 20px, black 100%)"
+              ? `linear-gradient(to right, transparent 0%, black ${fw}px, black 100%)`
               : canScrollRight
-              ? "linear-gradient(to right, black 0%, black calc(100% - 20px), transparent 100%)"
+              ? `linear-gradient(to right, black 0%, black calc(100% - ${fw}px), transparent 100%)`
               : undefined,
         }}
       >

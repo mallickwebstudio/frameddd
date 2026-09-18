@@ -17,6 +17,7 @@ import {
   FrameStyle,
   GlazingType,
   MatConfig,
+  StandardFrameSize,
   WallBackground,
 } from "@/types"
 import { GLAZING_OPTIONS } from "@/db/frames"
@@ -24,6 +25,7 @@ import { GLAZING_OPTIONS } from "@/db/frames"
 interface FrameVisualizerProps {
   artwork: ArtworkConfig
   frame: FrameStyle
+  selectedSize?: StandardFrameSize | null
   mouldingWidthInches: number
   mat: MatConfig
   wall: WallBackground
@@ -46,6 +48,8 @@ const PAN_STEP = 24 // pixels moved per arrow press
 export function FrameVisualizer({
   artwork,
   frame,
+  selectedSize = null,
+  mouldingWidthInches = 1.25,
   mat,
   wall,
   glazing,
@@ -112,7 +116,7 @@ export function FrameVisualizer({
   // Pointer event handlers for fluid mouse and touch dragging
   const handleFramePointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      ; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     setIsDragging(true)
     dragStartRef.current = {
       x: e.clientX,
@@ -139,8 +143,8 @@ export function FrameVisualizer({
   const handleFramePointerUp = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (isDragging) {
       try {
-        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-      } catch {}
+        ; (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+      } catch { }
       setIsDragging(false)
     }
   }
@@ -148,48 +152,45 @@ export function FrameVisualizer({
   // Ensure dragging flag is always reset if user releases pointer anywhere
   React.useEffect(() => {
     const handleGlobalPointerUp = (): void => {
-      setIsDragging(false)
+      if (isDragging) setIsDragging(false)
     }
     window.addEventListener("pointerup", handleGlobalPointerUp)
-    window.addEventListener("pointercancel", handleGlobalPointerUp)
-    return () => {
-      window.removeEventListener("pointerup", handleGlobalPointerUp)
-      window.removeEventListener("pointercancel", handleGlobalPointerUp)
-    }
-  }, [])
+    return () => window.removeEventListener("pointerup", handleGlobalPointerUp)
+  }, [isDragging])
 
-  // Wheel Zoom Listener on visualizer
+  // Mouse wheel zoom handler (smooth step: 0.05)
   const handleWheelZoom = (e: React.WheelEvent<HTMLDivElement>): void => {
     e.preventDefault()
-    const delta = -e.deltaY * 0.0015
-    const newZoom = Math.min(2.0, Math.max(0.05, Math.round((zoomLevel + delta) * 100) / 100))
+    const zoomStep = e.deltaY < 0 ? 0.05 : -0.05
+    const newZoom = Math.max(0.05, Math.min(2.0, Math.round((zoomLevel + zoomStep) * 100) / 100))
     onZoomChange(newZoom)
   }
 
-  // Touch Pinch-to-Zoom handlers
+  // Touch handlers for mobile pinch-to-zoom
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>): void => {
     if (e.touches.length === 2) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      )
-      touchDistanceRef.current = dist
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+      touchDistanceRef.current = distance
       initialZoomRef.current = zoomLevel
     }
   }
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>): void => {
     if (e.touches.length === 2 && touchDistanceRef.current !== null) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const currentDistance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
       )
-      const factor = dist / touchDistanceRef.current
-      const newZoom = Math.min(
-        2.0,
-        Math.max(0.05, Math.round(initialZoomRef.current * factor * 100) / 100)
+      const scaleDelta = currentDistance / touchDistanceRef.current
+      const targetZoom = Math.max(
+        0.05,
+        Math.min(2.0, Math.round(initialZoomRef.current * scaleDelta * 100) / 100)
       )
-      onZoomChange(newZoom)
+      onZoomChange(targetZoom)
     }
   }
 
@@ -226,8 +227,29 @@ export function FrameVisualizer({
     return () => observer.disconnect()
   }, [onCanvasDimensionsChange])
 
-  // Frame sizing and aspect ratio based on selected frame PNG
-  const frameRatio = frame.aspectRatio || 1
+  // Calculate effective aspect ratio based on uploaded artwork (or artwork dimensions)
+  const effectiveArtRatio = React.useMemo(() => {
+    let ratio = artwork.aspectRatio
+    if (!ratio || ratio <= 0) {
+      ratio =
+        artwork.originalWidthInches && artwork.originalHeightInches
+          ? artwork.originalWidthInches / artwork.originalHeightInches
+          : frame.aspectRatio || 1
+    }
+    if (artwork.rotation === 90 || artwork.rotation === 270) {
+      ratio = 1 / ratio
+    }
+    return ratio
+  }, [artwork.aspectRatio, artwork.originalWidthInches, artwork.originalHeightInches, artwork.rotation, frame.aspectRatio])
+
+  // Frame sizing and aspect ratio:
+  // If selectedSize is active, lock frame to standard size aspect ratio.
+  // Otherwise auto-adjust to artwork aspect ratio when 9-slice is enabled.
+  const frameRatio = selectedSize
+    ? selectedSize.widthInches / selectedSize.heightInches
+    : frame.useNineSlice || !frame.imageUrl
+    ? effectiveArtRatio
+    : frame.aspectRatio || 1
   const maxW = canvasDimensions.width * 0.72
   const maxH = canvasDimensions.height * 0.72
 
@@ -237,6 +259,16 @@ export function FrameVisualizer({
     frameDisplayH = maxH
     frameDisplayW = maxH * frameRatio
   }
+
+  // Calculated moulding border in pixels for 9-slice rendering (scales with user moulding width slider)
+  const mouldingPx = Math.max(
+    14,
+    Math.round(
+      Math.min(frameDisplayW, frameDisplayH) *
+        0.09 *
+        (mouldingWidthInches / (frame.defaultWidth || 1.25))
+    )
+  )
 
   const insets = frame.innerInset || { top: 15, right: 15, bottom: 15, left: 15 }
   const selectedGlazing = GLAZING_OPTIONS.find((g) => g.id === glazing) ?? GLAZING_OPTIONS[0]
@@ -250,14 +282,14 @@ export function FrameVisualizer({
     (node: HTMLDivElement | null) => {
       containerRef.current = node
       if (visualizerRef) {
-        ;(visualizerRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+        ; (visualizerRef as React.MutableRefObject<HTMLDivElement | null>).current = node
       }
     },
     [visualizerRef]
   )
 
   return (
-    <section className="relative w-full h-full p-3 sm:p-5 flex flex-col gap-4 items-center justify-center overflow-hidden bg-neutral-950 select-none">
+    <section className="p-2 sm:p-4 relative w-full h-full flex flex-col gap-4 items-center justify-center overflow-hidden bg-[#10231f] select-none">
       {/* 16:9 (Horizontal Video) Canvas Container */}
       <div
         ref={setContainerRefs}
@@ -311,8 +343,8 @@ export function FrameVisualizer({
             {isHorizontallyCentered && isVerticallyCentered
               ? "SNAPPED TO CENTER"
               : isHorizontallyCentered
-              ? "HORIZONTAL CENTER"
-              : "VERTICAL CENTER"}
+                ? "HORIZONTAL CENTER"
+                : "VERTICAL CENTER"}
           </div>
         )}
 
@@ -322,9 +354,8 @@ export function FrameVisualizer({
           onPointerMove={handleFramePointerMove}
           onPointerUp={handleFramePointerUp}
           onPointerCancel={handleFramePointerUp}
-          className={`relative transition-transform duration-100 ease-out z-10 flex items-center justify-center select-none touch-none ${
-            isDragging ? "cursor-grabbing scale-[1.002]" : "cursor-grab hover:scale-[1.001]"
-          }`}
+          className={`relative transition-transform duration-100 ease-out z-10 flex items-center justify-center select-none touch-none ${isDragging ? "cursor-grabbing scale-[1.002]" : "cursor-grab hover:scale-[1.001]"
+            }`}
           style={{
             width: `${Math.round(frameDisplayW)}px`,
             height: `${Math.round(frameDisplayH)}px`,
@@ -332,23 +363,34 @@ export function FrameVisualizer({
           }}
           title="Click and drag to move frame anywhere on wall"
         >
-          {/* Inner Artwork Window (positioned precisely dead-center inside the frame moulding) */}
+          {/* Inner Artwork Window (positioned flush inside the frame moulding with 1px overlap) */}
           <div
             className="absolute overflow-hidden flex items-center justify-center z-10 pointer-events-none"
-            style={{
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: `${Math.max(10, 100 - (insets.left + insets.right))}%`,
-              height: `${Math.max(10, 100 - (insets.top + insets.bottom))}%`,
-            }}
+            style={
+              frame.useNineSlice || !frame.imageUrl
+                ? {
+                    top: `${Math.max(0, mouldingPx - 1)}px`,
+                    left: `${Math.max(0, mouldingPx - 1)}px`,
+                    right: `${Math.max(0, mouldingPx - 1)}px`,
+                    bottom: `${Math.max(0, mouldingPx - 1)}px`,
+                  }
+                : {
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: `${Math.max(10, 100 - (insets.left + insets.right))}%`,
+                    height: `${Math.max(10, 100 - (insets.top + insets.bottom))}%`,
+                  }
+            }
           >
             {/* Matboard layer if enabled */}
             <div
               className="relative w-full h-full flex items-center justify-center overflow-hidden"
               style={{
                 backgroundColor: mat.enabled ? mat.color.hex : "#000",
-                padding: mat.enabled ? `${Math.max(4, Math.round(mat.widthInches * 4))}px` : "0px",
+                padding: mat.enabled
+                  ? `${Math.max(6, Math.round(mat.widthInches * (Math.min(frameDisplayW, frameDisplayH) / 28)))}px`
+                  : "0px",
               }}
             >
               {/* Artwork Container */}
@@ -379,8 +421,22 @@ export function FrameVisualizer({
             </div>
           </div>
 
-          {/* Selected Frame Moulding PNG Overlay */}
-          {frame.imageUrl ? (
+          {/* Selected Frame Moulding: 9-Slice CSS Border-Image or Legacy Overlay */}
+          {frame.useNineSlice && frame.imageUrl ? (
+            <div
+              className="absolute inset-0 pointer-events-none z-20 filter drop-shadow-[0_22px_32px_rgba(0,0,0,0.65)]"
+              style={{
+                borderStyle: "solid",
+                borderWidth: `${mouldingPx}px`,
+                borderImageSource: `url(${frame.imageUrl})`,
+                borderImageSlice:
+                  typeof frame.sliceBorder === "number"
+                    ? `${frame.sliceBorder}`
+                    : frame.sliceBorder || "15%",
+                borderImageRepeat: frame.sliceRepeat || "round",
+              }}
+            />
+          ) : frame.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={frame.imageUrl}
@@ -389,37 +445,61 @@ export function FrameVisualizer({
               style={
                 frame.rotation === 90
                   ? {
-                      position: "absolute",
-                      top: "50%",
-                      left: "50%",
-                      width: `${Math.round(frameDisplayH)}px`,
-                      height: `${Math.round(frameDisplayW)}px`,
-                      transform: "translate(-50%, -50%) rotate(90deg)",
-                      transformOrigin: "center center",
-                      objectFit: "fill",
-                    }
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    width: `${Math.round(frameDisplayH)}px`,
+                    height: `${Math.round(frameDisplayW)}px`,
+                    transform: "translate(-50%, -50%) rotate(90deg)",
+                    transformOrigin: "center center",
+                    objectFit: "fill",
+                  }
                   : {
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "fill",
-                    }
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "fill",
+                  }
               }
             />
           ) : (
             <div
               className="absolute inset-0 pointer-events-none z-20"
               style={{
-                border: `12px solid ${frame.color}`,
-                boxShadow: frame.boxShadowCss,
+                boxShadow:
+                  frame.boxShadowCss ||
+                  "0 24px 44px -8px rgba(0,0,0,0.65), 0 10px 20px -5px rgba(0,0,0,0.4)",
               }}
-            />
+            >
+              {/* 3D Moulding Profile with Mitered Corners and Ambient Highlight */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  borderStyle: "solid",
+                  borderWidth: `${mouldingPx}px`,
+                  borderColor: frame.color,
+                  borderTopColor: `color-mix(in srgb, ${frame.color} 82%, white)`,
+                  borderLeftColor: `color-mix(in srgb, ${frame.color} 90%, white)`,
+                  borderBottomColor: `color-mix(in srgb, ${frame.color} 75%, black)`,
+                  borderRightColor: `color-mix(in srgb, ${frame.color} 85%, black)`,
+                }}
+              />
+              {/* Inner Rabbet Lip Shadow falling onto the mat/artwork */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  margin: `${mouldingPx}px`,
+                  boxShadow: "inset 0 3px 10px rgba(0,0,0,0.65), inset 0 0 1px rgba(0,0,0,0.8)",
+                }}
+              />
+              {/* Outer Edge Subtle Sheen */}
+              <div className="absolute inset-0 pointer-events-none border border-white/10" />
+            </div>
           )}
         </div>
       </div>
 
-      {/* Floating Canvas Quick Controls (Bottom Center) with Size (+ / -) & Position Arrow Keys */}
       <div className="relative flex items-center gap-1.5 bg-card/90 backdrop-blur-md border border-border/80 rounded-full px-3 py-1.5 shadow-xl">
         {/* Size / Zoom Controls (- / +) from 5% (0.05) to 200% (2.0) */}
         <div className="flex items-center gap-1">
